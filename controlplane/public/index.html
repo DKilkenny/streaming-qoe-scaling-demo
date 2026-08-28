@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Streaming Load Console</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Streaming Load Console</h1>
+      <p class="sub">Drive the discovery API, break it, watch it heal. Concept prototype &mdash; synthetic data.</p>
+    </div>
+    <nav class="links">
+      <a id="grafana-link" href="https://localhost" target="_blank" rel="noopener">Grafana ↗</a>
+      <a id="jaeger-link" href="http://localhost:16686" target="_blank" rel="noopener">Traces ↗</a>
+      <a id="api-link" href="https://api.localhost/discover" target="_blank" rel="noopener">API ↗</a>
+    </nav>
+  </header>
+
+  <section class="tiles">
+    <div class="tile"><span class="label">Requests / sec</span><span class="value" id="t-rps">–</span></div>
+    <div class="tile"><span class="label">p99 latency</span><span class="value" id="t-p99">–</span></div>
+    <div class="tile"><span class="label">Cache hit</span><span class="value" id="t-cache">–</span></div>
+    <div class="tile"><span class="label">Queue backlog</span><span class="value" id="t-backlog">–</span></div>
+    <div class="tile"><span class="label">Active workers</span><span class="value" id="t-workers">–</span></div>
+  </section>
+
+  <div class="grid">
+    <section class="panel controls">
+      <h2>Load</h2>
+      <div class="row">
+        <input type="range" id="rps" min="0" max="8000" step="100" value="0" />
+        <output id="rps-out">0 rps</output>
+      </div>
+      <div class="btn-row">
+        <button data-preset="normal">Normal</button>
+        <button data-preset="spike">Spike</button>
+        <button data-preset="storm" class="warn">Event storm</button>
+        <button data-preset="stop" class="ghost">Stop</button>
+      </div>
+
+      <h2>Resilience</h2>
+      <div class="btn-row">
+        <button id="chaos" class="danger">Simulate worker outage</button>
+        <button id="scale-max">Scale to max workers</button>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="autoscaler" />
+        <span>Autoscaler (self-heal on backlog)</span>
+      </label>
+      <div class="stepper">
+        <span>Workers:</span>
+        <button id="w-down">−</button>
+        <span id="w-count">–</span>
+        <button id="w-up">+</button>
+      </div>
+
+      <h2>AI incident explainer</h2>
+      <button id="explain" class="accent">Explain what's happening</button>
+      <div id="explain-out" class="explain hidden"></div>
+    </section>
+
+    <section class="panel charts">
+      <div class="chart"><h3>Requests / sec</h3><canvas id="c-rps" height="90"></canvas></div>
+      <div class="chart"><h3>p99 latency (ms)</h3><canvas id="c-p99" height="90"></canvas></div>
+      <div class="chart"><h3>Queue backlog</h3><canvas id="c-backlog" height="90"></canvas></div>
+      <div class="chart"><h3>Active workers</h3><canvas id="c-workers" height="90"></canvas></div>
+    </section>
+
+    <section class="panel feed">
+      <h2>Activity</h2>
+      <ul id="feed"></ul>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

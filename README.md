@@ -11,7 +11,11 @@ Danny Kilkenny — synthetic data, not affiliated with any company.
 ## Stack
 
 Node.js · Fastify · TypeScript · Redis · RabbitMQ · Postgres · OpenTelemetry ·
-Prometheus · Grafana · Docker Compose · k6
+Prometheus · Grafana · Jaeger · Caddy · Docker · k6 · OpenRouter (AI explainer)
+
+The AI explainer is optional. To enable it: `cp .env.example .env` and set
+`OPENROUTER_API_KEY` (model configurable via `OPENROUTER_MODEL`). Without a key it
+falls back to a deterministic rule-based explanation, so nothing breaks.
 
 ## Run it (one command)
 
@@ -21,17 +25,29 @@ Requires Docker. From the repo root:
 make up          # build, start the stack, wait for health, seed the catalog
 ```
 
-Then open the dashboard and generate load in another terminal:
+Then open the **Load Console** at **https://console.localhost** and drive it from the browser.
 
-```bash
-make load        # containerized k6 ramps to 200 VUs against the API
-```
+![Load Console](docs/console.png)
 
-Watch it live at **https://grafana.localhost** (Grafana → "Streaming Discovery API").
+### The Load Console
+
+An interactive control room for the system:
+
+- **Drive real load** — a traffic dial and presets (Normal / Spike / Event storm). Clicks hit a load-generator service that puts real HTTP load on the API.
+- **Self-healing autoscaler** — toggle it on, then inject a **worker outage**: the engagement queue backs up, the autoscaler detects it and activates workers from a warm pool until the backlog drains, then scales back down. No human in the loop.
+- **Live distributed tracing** — API and worker are OpenTelemetry-instrumented; one click opens the trace waterfall (HTTP → Redis → RabbitMQ → Postgres) in **Jaeger**.
+- **AI incident explainer** — reads the live metrics and event log and writes a plain-English "what's happening" via OpenRouter (falls back to a deterministic reading with no API key).
+- Live sparklines and a color-coded activity feed, all dependency-free.
+
+Prefer the command line? `make load` runs a containerized k6 ramp instead.
+
+Watch the raw telemetry at **https://grafana.localhost** (Grafana → "Streaming Discovery API").
 
 | Service | HTTPS (Caddy + mkcert) | Plain HTTP |
 |---|---|---|
+| Load Console | https://console.localhost | http://localhost:8080 |
 | Grafana | https://grafana.localhost | http://localhost:3001 |
+| Jaeger (traces) | https://jaeger.localhost | http://localhost:16686 |
 | Discovery API | https://api.localhost/discover | http://localhost:3000/discover |
 | Prometheus | https://prometheus.localhost | http://localhost:9090 |
 | RabbitMQ UI | — | http://localhost:15673 (streaming / streaming) |

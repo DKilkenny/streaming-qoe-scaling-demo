@@ -5,12 +5,12 @@
 certs:
 	@mkdir -p caddy/certs
 	@command -v mkcert >/dev/null 2>&1 || { echo "mkcert not found. Run: brew install mkcert && mkcert -install"; exit 1; }
-	@test -f caddy/certs/local.pem || mkcert -cert-file caddy/certs/local.pem -key-file caddy/certs/local-key.pem localhost 127.0.0.1 ::1 grafana.localhost api.localhost prometheus.localhost
+	@test -f caddy/certs/local.pem || mkcert -cert-file caddy/certs/local.pem -key-file caddy/certs/local-key.pem localhost 127.0.0.1 ::1 grafana.localhost api.localhost prometheus.localhost console.localhost jaeger.localhost
 	@echo "TLS cert ready. If the browser distrusts it, run 'mkcert -install' once."
 
-# Build images and start the full stack.
+# Build images and start the full stack (worker runs as a warm pool of 5).
 up: certs
-	docker compose up -d --build
+	docker compose up -d --build --scale worker=5
 	@echo "waiting for the API to become healthy..."
 	@until curl -sf http://localhost:3000/health >/dev/null 2>&1; do sleep 2; done
 	@echo "API is up."
@@ -37,9 +37,11 @@ ps:
 urls:
 	@echo ""
 	@echo "  HTTPS (trusted cert via mkcert + Caddy):"
-	@echo "    Grafana    https://grafana.localhost   (dashboard: Streaming Discovery API)"
-	@echo "    Discover   https://api.localhost/discover"
-	@echo "    Prometheus https://prometheus.localhost"
+	@echo "    Load Console  https://console.localhost   <- start here"
+	@echo "    Grafana       https://grafana.localhost   (dashboard: Streaming Discovery API)"
+	@echo "    Traces        https://jaeger.localhost"
+	@echo "    Discover      https://api.localhost/discover"
+	@echo "    Prometheus    https://prometheus.localhost"
 	@echo ""
 	@echo "  Plain HTTP (direct to containers):"
 	@echo "    API        http://localhost:3000/discover"

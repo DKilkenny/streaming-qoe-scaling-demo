@@ -20,3 +20,15 @@ https://prometheus.localhost {
 	tls /certs/local.pem /certs/local-key.pem
 	reverse_proxy prometheus:9090
 }
+
+# Load Console on https://console.localhost
+https://console.localhost {
+	tls /certs/local.pem /certs/local-key.pem
+	reverse_proxy controlplane:8080
+}
+
+# Jaeger tracing UI on https://jaeger.localhost
+https://jaeger.localhost {
+	tls /certs/local.pem /certs/local-key.pem
+	reverse_proxy jaeger:16686
+}
