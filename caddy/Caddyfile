@@ -1,0 +1,22 @@
+{
+	# We supply our own mkcert-trusted certs; no ACME, no HTTP->HTTPS redirect server.
+	auto_https disable_redirects
+}
+
+# Grafana (the dashboard) on https://localhost and https://grafana.localhost
+https://localhost, https://grafana.localhost {
+	tls /certs/local.pem /certs/local-key.pem
+	reverse_proxy grafana:3000
+}
+
+# Discovery API on https://api.localhost
+https://api.localhost {
+	tls /certs/local.pem /certs/local-key.pem
+	reverse_proxy api:3000
+}
+
+# Prometheus on https://prometheus.localhost
+https://prometheus.localhost {
+	tls /certs/local.pem /certs/local-key.pem
+	reverse_proxy prometheus:9090
+}

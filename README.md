@@ -27,17 +27,31 @@ Then open the dashboard and generate load in another terminal:
 make load        # containerized k6 ramps to 200 VUs against the API
 ```
 
-Watch it live at **http://localhost:3001** (Grafana → "Streaming Discovery API").
+Watch it live at **https://grafana.localhost** (Grafana → "Streaming Discovery API").
 
-| Service | URL |
-|---|---|
-| API | http://localhost:3000/discover |
-| Metrics | http://localhost:3000/metrics |
-| Grafana | http://localhost:3001 |
-| Prometheus | http://localhost:9090 |
-| RabbitMQ UI | http://localhost:15673 (streaming / streaming) |
+| Service | HTTPS (Caddy + mkcert) | Plain HTTP |
+|---|---|---|
+| Grafana | https://grafana.localhost | http://localhost:3001 |
+| Discovery API | https://api.localhost/discover | http://localhost:3000/discover |
+| Prometheus | https://prometheus.localhost | http://localhost:9090 |
+| RabbitMQ UI | — | http://localhost:15673 (streaming / streaming) |
 
 Tear down with `make down` (keeps data) or `make clean` (wipes it).
+
+### HTTPS with a trusted cert
+
+The stack terminates TLS in a Caddy reverse proxy using a locally-trusted
+certificate from [mkcert](https://github.com/FiloSottile/mkcert), so browsers
+that force HTTPS on `localhost` get a green lock instead of a warning. `make up`
+generates the cert automatically. One-time setup on a new machine:
+
+```bash
+brew install mkcert   # or your platform's package
+mkcert -install       # trust the local CA (asks for your password once)
+```
+
+The `*.localhost` hostnames resolve to loopback automatically in modern browsers;
+no `/etc/hosts` edits needed. Certs live in `caddy/certs/` and are gitignored.
 
 ## What to look for under load
 

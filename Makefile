@@ -1,7 +1,15 @@
-.PHONY: up seed load load-heavy logs ps down clean urls
+.PHONY: up certs seed load load-heavy logs ps down clean urls
+
+# Generate a locally-trusted TLS cert (idempotent). Requires mkcert:
+#   brew install mkcert && mkcert -install
+certs:
+	@mkdir -p caddy/certs
+	@command -v mkcert >/dev/null 2>&1 || { echo "mkcert not found. Run: brew install mkcert && mkcert -install"; exit 1; }
+	@test -f caddy/certs/local.pem || mkcert -cert-file caddy/certs/local.pem -key-file caddy/certs/local-key.pem localhost 127.0.0.1 ::1 grafana.localhost api.localhost prometheus.localhost
+	@echo "TLS cert ready. If the browser distrusts it, run 'mkcert -install' once."
 
 # Build images and start the full stack.
-up:
+up: certs
 	docker compose up -d --build
 	@echo "waiting for the API to become healthy..."
 	@until curl -sf http://localhost:3000/health >/dev/null 2>&1; do sleep 2; done
@@ -28,12 +36,15 @@ ps:
 
 urls:
 	@echo ""
-	@echo "  API        http://localhost:3000/health"
-	@echo "  Discover   http://localhost:3000/discover"
-	@echo "  Metrics    http://localhost:3000/metrics"
-	@echo "  Grafana    http://localhost:3001  (dashboard: Streaming Discovery API)"
-	@echo "  Prometheus http://localhost:9090"
-	@echo "  RabbitMQ   http://localhost:15673  (streaming / streaming)"
+	@echo "  HTTPS (trusted cert via mkcert + Caddy):"
+	@echo "    Grafana    https://grafana.localhost   (dashboard: Streaming Discovery API)"
+	@echo "    Discover   https://api.localhost/discover"
+	@echo "    Prometheus https://prometheus.localhost"
+	@echo ""
+	@echo "  Plain HTTP (direct to containers):"
+	@echo "    API        http://localhost:3000/discover"
+	@echo "    Grafana    http://localhost:3001"
+	@echo "    RabbitMQ   http://localhost:15673  (streaming / streaming)"
 	@echo ""
 
 # Stop everything, keep data volume.

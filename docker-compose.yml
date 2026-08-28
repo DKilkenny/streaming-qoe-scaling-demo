@@ -111,12 +111,28 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
       GF_USERS_DEFAULT_THEME: dark
+      GF_SERVER_ROOT_URL: "https://grafana.localhost"
+      GF_SERVER_DOMAIN: "grafana.localhost"
     ports:
       - "3001:3000"
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
+      - prometheus
+
+  # TLS-terminating reverse proxy. Serves the stack over HTTPS with a locally
+  # trusted mkcert certificate, so browsers that force https on localhost work.
+  caddy:
+    image: caddy:2.8-alpine
+    ports:
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/certs:/certs:ro
+    depends_on:
+      - grafana
+      - api
       - prometheus
 
 volumes:

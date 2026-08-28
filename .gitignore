@@ -5,3 +5,4 @@ dist/
 load/results/
 .DS_Store
 .gstack/
+caddy/certs/
