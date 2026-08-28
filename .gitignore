@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+*.log
+load/results/
+.DS_Store
+.gstack/

@@ -1,0 +1,123 @@
+name: angel-streaming-demo
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: streaming
+      POSTGRES_PASSWORD: streaming
+      POSTGRES_DB: streaming
+    # No host port: the app reaches Postgres over the compose network. Avoids
+    # clashing with a local Postgres. Expose with `-p 55432:5432` if you want to psql in.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U streaming -d streaming"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    # Internal only (avoids clashing with a local Redis on 6379).
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      RABBITMQ_DEFAULT_USER: streaming
+      RABBITMQ_DEFAULT_PASS: streaming
+    # amqp (5672) and the prometheus port (15692) stay internal; only the
+    # management UI is published, remapped to 15673 to avoid a local RabbitMQ.
+    ports:
+      - "15673:15672"   # management UI  ->  http://localhost:15673
+    volumes:
+      - ./observability/rabbitmq-enabled-plugins:/etc/rabbitmq/enabled_plugins:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ./api
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgres://streaming:streaming@postgres:5432/streaming
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://streaming:streaming@rabbitmq:5672
+      CACHE_TTL_SECONDS: "30"
+      ROLE: api
+      OTEL_ENABLED: "${OTEL_ENABLED:-false}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    # Scale horizontally with:  docker compose up -d --scale api=4
+    # (remove the host port mapping above when scaling >1, or front with the nginx profile)
+
+  worker:
+    build:
+      context: ./api
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://streaming:streaming@postgres:5432/streaming
+      RABBITMQ_URL: amqp://streaming:streaming@rabbitmq:5672
+      ROLE: worker
+      WORKER_PREFETCH: "50"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - api
+
+  k6:
+    image: grafana/k6:0.53.0
+    profiles: ["load"]
+    environment:
+      BASE_URL: http://api:3000
+    volumes:
+      - ./load:/scripts:ro
+    # Run a load test:  docker compose run --rm k6 run /scripts/discover.js
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_USERS_DEFAULT_THEME: dark
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:
