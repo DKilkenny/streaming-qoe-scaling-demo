@@ -111,8 +111,8 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
       GF_USERS_DEFAULT_THEME: dark
-      GF_SERVER_ROOT_URL: "https://grafana.localhost"
-      GF_SERVER_DOMAIN: "grafana.localhost"
+      GF_SERVER_ROOT_URL: "https://localhost/"
+      GF_SERVER_DOMAIN: "localhost"
     ports:
       - "3001:3000"
     volumes:
