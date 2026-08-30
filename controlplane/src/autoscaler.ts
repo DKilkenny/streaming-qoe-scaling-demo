@@ -5,7 +5,7 @@ import { logEvent } from "./state";
 
 let enabled = false;
 let lastScale = 0;
-const COOLDOWN_MS = 5_000; // avoid flapping
+const COOLDOWN_MS = 3_000; // avoid flapping
 
 export function setAutoscaler(on: boolean) {
   enabled = on;
@@ -27,7 +27,10 @@ async function tick() {
   if (snap.backlog == null || active < 0) return;
 
   if (snap.backlog > config.scaleUpBacklog && active < config.maxWorkers) {
-    const next = await setDesiredWorkers(active + 1);
+    // Scale up proportionally to the backlog so a big spike recovers decisively
+    // instead of crawling up one worker at a time.
+    const jump = Math.max(1, Math.ceil(snap.backlog / 5000));
+    const next = await setDesiredWorkers(active + jump);
     lastScale = now;
     logEvent(
       "scale-up",

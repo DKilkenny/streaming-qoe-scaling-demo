@@ -8,7 +8,7 @@ import { metricsSnapshot } from "./metrics";
 import {
   initPool,
   setDesiredWorkers,
-  pauseAllWorkers,
+  injectOutage,
   activeWorkers,
   poolSize,
   isDockerAvailable,
@@ -96,8 +96,8 @@ async function main() {
   });
 
   app.post("/api/chaos/worker-outage", async () => {
-    await pauseAllWorkers();
-    logEvent("chaos", "worker outage injected (all workers paused)");
+    await injectOutage();
+    logEvent("chaos", "worker outage injected (all workers stopped)");
     return { ok: true };
   });
 
