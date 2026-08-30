@@ -34,7 +34,7 @@ Then open the **Load Console** at **https://console.localhost** and drive it fro
 An interactive control room for the system:
 
 - **Drive real load** — a traffic dial and presets (Normal / Spike / Event storm). Clicks hit a load-generator service that puts real HTTP load on the API.
-- **Self-healing autoscaler** — toggle it on, then inject a **worker outage**: the engagement queue backs up, the autoscaler detects it and activates workers from a warm pool until the backlog drains, then scales back down. No human in the loop.
+- **Self-healing autoscaler** — toggle it on and hit **Event storm**: one worker can't keep up (each event does ~4ms of simulated downstream processing, so per-worker throughput is bounded the way a real enrichment pipeline is), the queue backs up, and the autoscaler scales workers up proportionally to drain it, then back down when the surge passes. Read latency stays flat the whole time — reads are decoupled from the write pipeline. **Simulate worker outage** shows the same recovery from a hard failure.
 - **Live distributed tracing** — API and worker are OpenTelemetry-instrumented; one click opens the trace waterfall (HTTP → Redis → RabbitMQ → Postgres) in **Jaeger**.
 - **AI incident explainer** — reads the live metrics and event log and writes a plain-English "what's happening" via OpenRouter (falls back to a deterministic reading with no API key).
 - Live sparklines and a color-coded activity feed, all dependency-free.

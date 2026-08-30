@@ -8,7 +8,11 @@ export const config = {
   rabbitUrl:
     process.env.RABBITMQ_URL ?? "amqp://streaming:streaming@localhost:5672",
   cacheTtlSeconds: Number(process.env.CACHE_TTL_SECONDS ?? 30),
-  workerPrefetch: Number(process.env.WORKER_PREFETCH ?? 50),
+  workerPrefetch: Number(process.env.WORKER_PREFETCH ?? 4),
+  // Simulated per-event downstream work (enrichment, multi-aggregate updates,
+  // etc.). Bounds per-worker throughput so event capacity scales with the number
+  // of workers — which is what makes the autoscaler's job real under load.
+  workerEventMs: Number(process.env.WORKER_EVENT_MS ?? 4),
   otelEnabled: (process.env.OTEL_ENABLED ?? "false") === "true",
   otelEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "",
   engagementQueue: "engagement",

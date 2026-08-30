@@ -48,6 +48,7 @@ services:
   api:
     build:
       context: ./api
+    image: streaming-app
     environment:
       NODE_ENV: production
       PORT: "3000"
@@ -75,12 +76,14 @@ services:
   worker:
     build:
       context: ./api
+    image: streaming-app
     environment:
       NODE_ENV: production
       DATABASE_URL: postgres://streaming:streaming@postgres:5432/streaming
       RABBITMQ_URL: amqp://streaming:streaming@rabbitmq:5672
       ROLE: worker
-      WORKER_PREFETCH: "50"
+      WORKER_PREFETCH: "4"
+      WORKER_EVENT_MS: "4"
       OTEL_ENABLED: "${OTEL_ENABLED:-true}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318}"
       OTEL_TRACES_SAMPLER: "parentbased_traceidratio"

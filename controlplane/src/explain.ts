@@ -7,18 +7,19 @@ import { recentEvents } from "./state";
 // with no API key and is the honest fallback if the model call fails.
 function ruleBasedExplain(s: Snapshot, workers: number): string {
   const parts: string[] = [];
-  if (s.backlog != null && s.backlog > 5000)
+  const w = workers >= 0 ? `${workers} worker(s) active; ` : "";
+  if (s.backlog != null && s.backlog > 2000)
     parts.push(
-      `The engagement queue is backed up (${s.backlog.toLocaleString()} messages) — the workers are behind the incoming event rate. ${workers >= 0 ? `${workers} worker(s) active; ` : ""}adding worker capacity will drain it.`
+      `The engagement queue is backed up (${s.backlog.toLocaleString()} messages) — the workers are behind the incoming event rate. ${w}adding worker capacity will drain it.`
     );
   else if (s.backlog != null && s.backlog > 500)
-    parts.push(`A small backlog is forming (${s.backlog} messages) but the workers are keeping pace.`);
-  else parts.push("The event pipeline is healthy — the queue is essentially empty.");
+    parts.push(`A backlog is forming (${s.backlog} messages); ${w}the workers are roughly keeping pace.`);
+  else parts.push(`The event pipeline is healthy — the queue is essentially empty and ${workers >= 0 ? `${workers} worker(s) are` : "the workers are"} keeping up.`);
 
-  if (s.p99_ms != null && s.p99_ms > 100)
-    parts.push(`Read latency is elevated (p99 ${s.p99_ms}ms), consistent with the API saturating under load; scaling reads or warming the cache would bring it down.`);
+  if (s.p99_ms != null && s.p99_ms > 150)
+    parts.push(`Read latency is elevated (p99 ${s.p99_ms}ms); warming the cache or scaling the read path would help.`);
   else if (s.p99_ms != null)
-    parts.push(`Reads are fast (p99 ${s.p99_ms}ms).`);
+    parts.push(`Reads are fast (p99 ${s.p99_ms}ms), served from cache independently of the event pipeline.`);
 
   if (s.cacheHitRate != null && s.cacheHitRate < 80)
     parts.push(`Cache hit rate is low (${s.cacheHitRate}%) — the cache is still warming or churning.`);
@@ -47,7 +48,7 @@ async function llmExplain(prompt: string): Promise<string | null> {
           {
             role: "system",
             content:
-              "You are an SRE watching a streaming discovery API. Given live metrics and a recent event log, explain in 2-4 plain-English sentences what is happening right now and what action (if any) would help. Be concrete and calm. No preamble, no bullet points.",
+              "You are an SRE watching a streaming discovery API. Explain in 2-4 plain-English sentences what the metrics show right now and what action, if any, would help. Ground every claim in the numbers provided; do not invent problems. Two separate concerns: (1) READ latency (p50/p99) is the API's read path, kept fast by caching — it is unrelated to event processing. (2) The QUEUE BACKLOG is the event write path. Only say the system is 'struggling' or 'behind' if the backlog is large (say > 2000) or clearly growing. If the backlog is low and latency is low, state plainly that the system is healthy. Be concrete and calm. No preamble, no bullet points.",
           },
           { role: "user", content: prompt },
         ],

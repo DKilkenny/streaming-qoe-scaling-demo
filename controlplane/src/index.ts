@@ -31,9 +31,11 @@ setInterval(async () => {
 }, 3_000);
 
 const PRESETS: Record<string, { rps: number; mode: "mixed" | "events" }> = {
-  normal: { rps: 300, mode: "mixed" },
-  spike: { rps: 2500, mode: "mixed" },
-  storm: { rps: 4000, mode: "events" },
+  normal: { rps: 800, mode: "mixed" },
+  spike: { rps: 2000, mode: "mixed" },
+  // Event storm outruns a single worker (~800/s), so the queue builds and the
+  // autoscaler scales up to ~4 workers (with headroom) to drain it.
+  storm: { rps: 2500, mode: "events" },
 };
 
 async function main() {
@@ -102,9 +104,12 @@ async function main() {
   });
 
   app.post<{ Body: { workers?: number } }>("/api/scale", async (req) => {
+    // Manual scaling is an override: turn the autoscaler off so it doesn't
+    // immediately undo the operator's choice.
+    if (autoscalerEnabled()) setAutoscaler(false);
     const desired = Number(req.body?.workers ?? config.minWorkers);
     const active = await setDesiredWorkers(desired);
-    logEvent("scale", `manual scale -> ${active} workers`);
+    logEvent("scale", `manual scale -> ${active} workers (autoscaler off)`);
     return { active };
   });
 

@@ -27,6 +27,11 @@ async function handle(channel: Ch, msg: amqp.ConsumeMessage) {
          updated_at       = now()`,
       [titleId, type === "play" ? 1 : 0, type === "complete" ? 1 : 0, score]
     );
+    // Simulated downstream processing cost (see config.workerEventMs). This is
+    // what makes one worker's throughput finite, so scaling workers matters.
+    if (config.workerEventMs > 0) {
+      await new Promise((r) => setTimeout(r, config.workerEventMs));
+    }
     eventsProcessed.labels(type).inc();
     channel.ack(msg);
   } catch (err) {
