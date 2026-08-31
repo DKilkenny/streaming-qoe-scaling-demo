@@ -78,16 +78,22 @@ services:
       rabbitmq:
         condition: service_healthy
 
-  # nginx load balancer in front of the api pool. Re-resolves the "api"
-  # network alias via Docker's embedded DNS on every request (see
-  # lb/nginx.conf), so containers the control plane creates/removes
-  # dynamically are picked up with no reload.
+  # nginx load balancer in front of the api pool. The backend list lives in
+  # a control-plane-generated file (lbdynamic volume) that's included into a
+  # real `upstream` block with keepalive (see lb/nginx.conf) — the control
+  # plane rewrites it and reloads nginx whenever the api pool changes
+  # (see controlplane/src/docker.ts: writeApiUpstream).
   lb:
     image: nginx:1.27-alpine
     volumes:
       - ./lb/nginx.conf:/etc/nginx/nginx.conf:ro
+      - lbdynamic:/etc/nginx/dynamic
     ports:
       - "3000:80"   # host :3000 now goes through the LB to an api replica
+    # Seed a default upstream (just the compose "api" alias) before the
+    # control plane has written anything, so nginx has a valid config to
+    # start with — avoids a chicken-and-egg startup race with controlplane.
+    command: ["sh", "-c", "[ -f /etc/nginx/dynamic/api_upstream.conf ] || echo 'server api:3000;' > /etc/nginx/dynamic/api_upstream.conf; exec nginx -g 'daemon off;'"]
     depends_on:
       - api
 
@@ -192,6 +198,10 @@ services:
       # containers on demand. Demo-only convenience; a production version
       # would call the ECS/K8s API instead.
       - /var/run/docker.sock:/var/run/docker.sock
+      # Same dynamic-upstream volume as `lb`: controlplane writes the
+      # generated api_upstream.conf here, then execs `nginx -s reload`
+      # inside the lb container to pick it up (see docker.ts).
+      - lbdynamic:/etc/nginx/dynamic
     depends_on:
       - api
       - lb
@@ -216,3 +226,4 @@ services:
 
 volumes:
   pgdata:
+  lbdynamic:

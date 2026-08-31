@@ -1,4 +1,6 @@
 import Docker from "dockerode";
+import { promises as fsp } from "fs";
+import path from "path";
 import { config } from "./config";
 
 // Controls the worker pool AND the api pool by CREATING and REMOVING
@@ -19,6 +21,14 @@ let dockerAvailable = true;
 // carry, since the nginx LB resolves "api" through Docker's embedded DNS
 // (see lb/nginx.conf).
 const API_SERVICE = "api";
+
+// The lb service's compose service name, so writeApiUpstream() can find its
+// container and reload it. See lb/nginx.conf (`upstream api_pool { include
+// ... }`) and docker-compose.yml (the `lbdynamic` volume shared between
+// `lb` and `controlplane`).
+const LB_SERVICE = "lb";
+const NGINX_DYNAMIC_DIR = "/etc/nginx/dynamic";
+const API_UPSTREAM_PATH = path.join(NGINX_DYNAMIC_DIR, "api_upstream.conf");
 
 async function poolContainers(service: string): Promise<Docker.ContainerInfo[]> {
   const list = await docker.listContainers({
@@ -292,7 +302,80 @@ export async function setDesiredWorkers(desired: number): Promise<number> {
 
 /** Drive the api pool to `desired` running instances (clamped to [minApi, maxApi]) by creating/removing containers. Returns the resulting active count. */
 export async function setDesiredApiInstances(desired: number): Promise<number> {
-  return setDesiredInstances(API_SERVICE, config.minApi, config.maxApi, 0, desired);
+  const active = await setDesiredInstances(API_SERVICE, config.minApi, config.maxApi, 0, desired);
+  // Regenerate the nginx upstream backend list and reload the LB so the new
+  // pool size is actually reachable (see lb/nginx.conf's `upstream
+  // api_pool` block). Covers both scale-up (new backend added) and
+  // scale-down (stale backend removed) — never throws, so a reload hiccup
+  // can't fail the scale operation itself.
+  await writeApiUpstream();
+  return active;
+}
+
+/**
+ * Regenerate /etc/nginx/dynamic/api_upstream.conf (the file lb/nginx.conf's
+ * `upstream api_pool` block includes) from the currently-running api
+ * containers' network IPs, then reload nginx in the `lb` container so it
+ * picks up the new backend list. Falls back to the compose "api" DNS alias
+ * if no running api container is found, so the upstream block is never left
+ * empty (an empty upstream is an invalid nginx config and would take the LB
+ * down entirely).
+ *
+ * Called after every api pool scale (setDesiredApiInstances), once at boot
+ * (initPool), and periodically (see the setInterval in initPool) to catch
+ * drift. Never throws — a failure here must not crash the control plane;
+ * the LB just keeps serving the previous backend list until the next
+ * successful write+reload.
+ */
+export async function writeApiUpstream(): Promise<void> {
+  try {
+    const infos = await poolContainers(API_SERVICE);
+    const lines: string[] = [];
+    for (const info of infos) {
+      try {
+        const s = await docker.getContainer(info.Id).inspect();
+        if (!(s.State.Running === true && s.State.Paused !== true)) continue;
+        const networks = s.NetworkSettings.Networks ?? {};
+        const ip = Object.values(networks)[0]?.IPAddress;
+        if (ip) lines.push(`server ${ip}:3000;`);
+      } catch {
+        /* container vanished mid-scan */
+      }
+    }
+    const body = lines.length > 0 ? `${lines.join("\n")}\n` : "server api:3000;\n";
+    await fsp.mkdir(NGINX_DYNAMIC_DIR, { recursive: true }).catch(() => {});
+    await fsp.writeFile(API_UPSTREAM_PATH, body, "utf8");
+    await reloadLbNginx();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[docker] writeApiUpstream failed:", (err as Error).message);
+  }
+}
+
+/** Exec `nginx -s reload` inside the running `lb` container so it picks up a freshly-written api_upstream.conf. Never throws. */
+async function reloadLbNginx(): Promise<void> {
+  try {
+    const list = await docker.listContainers({
+      filters: {
+        label: [
+          `com.docker.compose.project=${config.composeProject}`,
+          `com.docker.compose.service=${LB_SERVICE}`,
+        ],
+        status: ["running"],
+      },
+    });
+    const lbInfo = list[0];
+    if (!lbInfo) return;
+    const exec = await docker.getContainer(lbInfo.Id).exec({
+      Cmd: ["nginx", "-s", "reload"],
+      AttachStdout: true,
+      AttachStderr: true,
+    });
+    await exec.start({});
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[docker] lb nginx reload failed:", (err as Error).message);
+  }
 }
 
 /** Chaos: stop every worker so the queue backs up (a real outage). Recovery is a fresh scale/create, not an unpause. */
@@ -307,12 +390,24 @@ export async function injectOutage(): Promise<void> {
 export async function initPool(): Promise<void> {
   try {
     await setDesiredWorkers(config.minWorkers);
+    // Also writes api_upstream.conf + reloads the lb container (see
+    // setDesiredApiInstances), giving nginx its real backend list in place
+    // of the seeded single-entry default (see docker-compose.yml's `lb`
+    // service `command`).
     await setDesiredApiInstances(config.minApi);
   } catch (err) {
     dockerAvailable = false;
     // eslint-disable-next-line no-console
     console.error("[docker] pool init failed:", (err as Error).message);
   }
+  // Periodic reconcile: catches any drift between the running api pool and
+  // the nginx backend list (e.g. a container that died outside a scale
+  // operation) that the scale-triggered writeApiUpstream() calls wouldn't
+  // see. writeApiUpstream() never throws, so a single failed tick can't
+  // kill the interval.
+  setInterval(() => {
+    void writeApiUpstream();
+  }, 15_000);
 }
 
 export function isDockerAvailable(): boolean {
