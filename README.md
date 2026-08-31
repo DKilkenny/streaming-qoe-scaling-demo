@@ -234,9 +234,9 @@ exactly this traffic shape, not a simulation of it.
   cause (its viewer-session dispatch briefly inflates p95 even though the
   read tier isn't actually saturated) and well under a genuine herd's VST, so
   the two autoscalers don't false-trigger on each other's traffic.
-- Raising nginx's `worker_connections` (512 → 4096) fixed a ~30% error rate
-  under the herd down to ~0 — a 22,768-request burst logged zero errors
-  post-fix.
+- Raising nginx's `worker_connections` (512 → 4096) took the herd error rate
+  from ~30% down to ~0 — the read tier now sustains ~3,900 req/s with no
+  connection failures.
 - Confirmed independence: `playbackSurge` scales the API tier while the
   worker pool holds at 1; `episodePremiere` scales the worker pool while the
   API tier holds at 1.
