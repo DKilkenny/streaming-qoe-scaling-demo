@@ -59,7 +59,7 @@ async function viewerSession(titleId: string) {
     if (Math.random() < 0.08) {
       setTimeout(() => void beacon("rebuffer"), 2_000 + Math.random() * 4_000); // ~8% rebuffer early
     }
-    void setTimeout(() => void beacon("progress"), 5_000 + Math.random() * 7_000); // progress mid-watch
+    setTimeout(() => void beacon("progress"), 5_000 + Math.random() * 7_000); // progress mid-watch
     if (Math.random() < 0.02) {
       setTimeout(() => void beacon("error"), 6_000 + Math.random() * 6_000); // ~2% error out mid-watch
     } else {

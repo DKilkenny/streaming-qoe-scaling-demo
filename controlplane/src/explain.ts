@@ -83,15 +83,18 @@ export async function explainIncident(): Promise<{
     .map((e) => `- ${new Date(e.ts).toISOString().slice(11, 19)} ${e.kind}: ${e.detail}`)
     .join("\n");
 
+  const n = (v: number | null, unit = ""): string =>
+    v == null ? "n/a (no traffic sampled)" : `${v}${unit}`;
+
   const prompt =
     `Live metrics:\n` +
-    `  VST p95: ${snap.vstP95_ms}ms (SLO < 100ms)\n` +
-    `  concurrent streams: ${snap.concurrentStreams}\n` +
-    `  rebuffer ratio: ${snap.rebufferRatio}%\n` +
-    `  playback error rate: ${snap.playbackErrorRate}%\n` +
-    `  cache hit rate: ${snap.cacheHitRate}%\n` +
-    `  beacon backlog: ${snap.backlog}\n` +
-    `  beacons published/s: ${snap.eventsPublished}, processed/s: ${snap.eventsProcessed}\n` +
+    `  VST p95: ${n(snap.vstP95_ms, "ms")} (SLO < 100ms)\n` +
+    `  concurrent streams: ${n(snap.concurrentStreams)}\n` +
+    `  rebuffer ratio: ${n(snap.rebufferRatio, "%")}\n` +
+    `  playback error rate: ${n(snap.playbackErrorRate, "%")}\n` +
+    `  cache hit rate: ${n(snap.cacheHitRate, "%")}\n` +
+    `  beacon backlog: ${n(snap.backlog)}\n` +
+    `  beacons published/s: ${n(snap.eventsPublished)}, processed/s: ${n(snap.eventsProcessed)}\n` +
     `  active workers: ${workers < 0 ? "unknown" : workers}\n\n` +
     `Recent events:\n${events || "(none)"}`;
 

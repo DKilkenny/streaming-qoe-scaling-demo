@@ -40,10 +40,6 @@ function push(key, v) {
   if (arr.length > MAXPTS) arr.shift();
 }
 
-function fmt(v, suffix = "", dash = "–") {
-  return v == null ? dash : v + suffix;
-}
-
 async function post(path, body) {
   await fetch(path, {
     method: "POST",
@@ -71,8 +67,8 @@ async function poll() {
   push("vst", m.vstP95_ms || 0);
   push("backlog", m.backlog || 0);
   push("workers", s.workers < 0 ? 0 : s.workers);
-  drawSpark($("c-rps"), series.concurrent, "#5b8cff");
-  drawSpark($("c-p99"), series.vst, "#f5b445");
+  drawSpark($("c-concurrent"), series.concurrent, "#5b8cff");
+  drawSpark($("c-vst"), series.vst, "#f5b445");
   drawSpark($("c-backlog"), series.backlog, "#f2555a");
   drawSpark($("c-workers"), series.workers, "#34d399");
 

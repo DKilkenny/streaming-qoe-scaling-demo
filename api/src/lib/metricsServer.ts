@@ -2,7 +2,7 @@ import http from "node:http";
 import { registry } from "../telemetry";
 
 // Minimal metrics endpoint for the worker process (no Fastify/Redis pulled in).
-// Lets Prometheus scrape worker-side counters like engagement_events_processed_total.
+// Lets Prometheus scrape worker-side counters like qoe_beacons_processed_total.
 export function startMetricsServer(port: number) {
   const server = http.createServer(async (req, res) => {
     if (req.url === "/metrics") {
