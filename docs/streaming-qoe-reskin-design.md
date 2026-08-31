@@ -37,12 +37,21 @@ plainly.
 
 | Metric | What it is | Honesty framing |
 |---|---|---|
-| **Video Start Time (VST) p95** | Real measured latency of `POST /playback/start` (authorize + prepare playback session, served cache-first). | "VST here is time-to-authorized-session, measured — not the CDN segment fetch, which is Phase 2 with real HLS." |
+| **Video Start Time (VST) p95** | Real measured latency of `POST /playback/start` (authorize + prepare playback session, served cache-first). **SLO: p95 < 100 ms.** | "VST here is the session-authorization budget, measured — not the end-to-end first-frame time, which adds CDN segment fetch and is Phase 2 with real HLS." |
 | **Concurrent streams** | Real gauge of active playback sessions. | Directly measured. |
 | **Rebuffer ratio** | Aggregated from client-emitted QoE beacons. | The load generator plays a **client SDK fleet emitting beacons** — exactly how Conviva/real QoE works. Real pipeline, synthetic client input, clearly labeled. |
 | **Playback error rate** | Aggregated from `error` beacons. | Same as rebuffer: real aggregation pipeline over synthetic client beacons. |
 | **Most-watched / trending** | Aggregated from `play`/`complete` beacons. | Existing pipeline, unchanged. |
 | **Cache hit rate** | Real Redis hit rate. | Reframed as "shielding the catalog DB during a premiere surge." |
+
+### Service Level Objectives
+
+- **VST p95 < 100 ms** — the session-authorization budget for `POST /playback/start`.
+  This is the demo's primary pass/fail line: it must stay green *through* the
+  Episode Premiere surge, which is the whole point (cache-first playback start is
+  decoupled from the beacon write path).
+- End-to-end VST (including first-segment fetch) would target the industry
+  ~1–2 s in Phase 2 with real HLS. Called out so the two are never conflated.
 
 ## Architecture
 
