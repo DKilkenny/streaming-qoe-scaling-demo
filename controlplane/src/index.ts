@@ -30,12 +30,13 @@ setInterval(async () => {
   if (n >= 0) activeWorkersGauge.set(n);
 }, 3_000);
 
-const PRESETS: Record<string, { rps: number; mode: "mixed" | "events" }> = {
-  normal: { rps: 800, mode: "mixed" },
-  spike: { rps: 2000, mode: "mixed" },
-  // Event storm outruns a single worker (~800/s), so the queue builds and the
-  // autoscaler scales up to ~4 workers (with headroom) to drain it.
-  storm: { rps: 2500, mode: "events" },
+const PRESETS: Record<string, { rps: number; mode: "mixed" | "events" | "premiere" }> = {
+  eveningPeak: { rps: 800, mode: "mixed" },
+  trailerDrop: { rps: 1500, mode: "mixed" },
+  // Episode premiere: a synchronized surge of viewers opening sessions on one
+  // title. Outruns a single worker's beacon-processing capacity, so the queue
+  // builds and the autoscaler scales up to drain it — while VST stays flat.
+  episodePremiere: { rps: 2500, mode: "premiere" },
 };
 
 async function main() {

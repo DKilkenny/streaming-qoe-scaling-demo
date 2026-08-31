@@ -1,6 +1,6 @@
 import { config } from "./config";
 
-type Mode = "mixed" | "events";
+type Mode = "mixed" | "events" | "premiere";
 
 let targetRps = 0;
 let mode: Mode = "mixed";
@@ -32,11 +32,52 @@ function pickId(): string | null {
   return titleIds[Math.floor(Math.random() * titleIds.length)];
 }
 
+// One simulated viewer: open a playback session (VST is measured server-side),
+// then emit a short run of QoE beacons — a play, a couple of progress beacons,
+// an occasional rebuffer, and a final complete. This is the "client SDK fleet"
+// that produces the QoE numbers the dashboard aggregates.
+async function viewerSession(titleId: string) {
+  if (inflight >= MAX_INFLIGHT) return;
+  inflight++;
+  try {
+    const res = await fetch(`${config.apiBase}/playback/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ titleId }),
+    });
+    if (!res.ok) { errors++; return; }
+    const { sessionId } = (await res.json()) as { sessionId: string };
+    const beacon = (type: string) =>
+      fetch(`${config.apiBase}/qoe/beacon`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, titleId, type }),
+      }).catch(() => { errors++; });
+
+    await beacon("play");
+    await beacon("progress");
+    if (Math.random() < 0.08) await beacon("rebuffer"); // ~8% see a rebuffer
+    if (Math.random() < 0.02) { await beacon("error"); return; } // ~2% error out
+    await beacon("progress");
+    await beacon("complete");
+    sent++;
+  } catch {
+    errors++;
+  } finally {
+    inflight--;
+  }
+}
+
 async function oneRequest() {
   if (inflight >= MAX_INFLIGHT) return;
   inflight++;
   try {
     const roll = Math.random();
+    if (mode === "premiere") {
+      const id = titleIds[0] ?? pickId();
+      if (id) await viewerSession(id);
+      return;
+    }
     if (mode === "events") {
       const id = pickId();
       if (id) {
@@ -54,13 +95,10 @@ async function oneRequest() {
     } else if (roll < 0.92) {
       await fetch(`${config.apiBase}/search?q=${TERMS[(Math.random() * TERMS.length) | 0]}`);
     } else {
+      // ~8% of mixed traffic opens a real playback session so VST/concurrent
+      // streams/rebuffer ratio stay populated outside the premiere preset too.
       const id = pickId();
-      if (id)
-        await fetch(`${config.apiBase}/qoe/beacon`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ titleId: id, type: "play" }),
-        });
+      if (id) await viewerSession(id);
     }
     sent++;
   } catch {
