@@ -28,11 +28,12 @@ stays stable.
 - Attach a **reserved/static IP**. Note it, e.g. `143.42.9.17`.
 - Firewall: allow **22 (SSH), 80, 443** only. Nothing else needs to be public.
 
-## 2. Install Docker + Compose
+## 2. Install Docker + Compose (+ make)
 ```bash
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER   # then log out/in, or run the rest with sudo
 docker compose version          # confirm Compose v2 is present
+sudo apt-get update && sudo apt-get install -y make   # the Makefile is the task runner
 ```
 
 ## 3. Get the code + secrets
@@ -93,6 +94,10 @@ mkcert `caddy/certs` mount is simply unused by the prod config.)
 ```bash
 make up      # builds, starts, scales the worker pool, seeds the catalog
 ```
+(The Makefile's mkcert step auto-skips on a prod VM — there's no mkcert and none
+is needed; Caddy gets a real Let's Encrypt cert. `make up-prod` is a documented
+alias for the same thing.)
+
 First TLS issuance takes ~10–30s. Then open:
 ```
 https://143-42-9-17.sslip.io      (log in with the basic-auth user/password)

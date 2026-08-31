@@ -1,12 +1,17 @@
-.PHONY: up certs seed load load-heavy logs ps down clean urls
+.PHONY: up up-prod certs seed load load-heavy logs ps down clean urls
 
-# Generate a locally-trusted TLS cert (idempotent). Requires mkcert:
-#   brew install mkcert && mkcert -install
+# Generate a locally-trusted TLS cert (idempotent). Requires mkcert.
+# On a prod VM there is no mkcert and none is needed — Caddy (Caddyfile.prod)
+# gets a real Let's Encrypt cert — so this step is a no-op there instead of an
+# error. It only actually generates certs when mkcert is present (local dev).
 certs:
 	@mkdir -p caddy/certs
-	@command -v mkcert >/dev/null 2>&1 || { echo "mkcert not found. Run: brew install mkcert && mkcert -install"; exit 1; }
-	@test -f caddy/certs/local.pem || mkcert -cert-file caddy/certs/local.pem -key-file caddy/certs/local-key.pem localhost 127.0.0.1 ::1 grafana.localhost api.localhost prometheus.localhost console.localhost jaeger.localhost
-	@echo "TLS cert ready. If the browser distrusts it, run 'mkcert -install' once."
+	@if command -v mkcert >/dev/null 2>&1; then \
+		test -f caddy/certs/local.pem || mkcert -cert-file caddy/certs/local.pem -key-file caddy/certs/local-key.pem localhost 127.0.0.1 ::1 grafana.localhost api.localhost prometheus.localhost console.localhost jaeger.localhost; \
+		echo "TLS cert ready. If the browser distrusts it, run 'mkcert -install' once."; \
+	else \
+		echo "mkcert not found — skipping local certs (fine for prod; Caddy/Let's Encrypt handles TLS). For local dev: brew install mkcert && mkcert -install"; \
+	fi
 
 # Build images and start the full stack (worker runs as a warm pool of 5).
 up: certs
@@ -15,7 +20,12 @@ up: certs
 	@until curl -sf http://localhost:3000/health >/dev/null 2>&1; do sleep 2; done
 	@echo "API is up."
 	$(MAKE) seed
+	@echo "Stack up. Local dev URLs below (prod: your SITE_ADDRESS from caddy.env)."
 	$(MAKE) urls
+
+# Alias for prod VM deploys — identical to 'up', but the name documents that
+# mkcert is skipped and TLS comes from Caddy/Let's Encrypt (see DEPLOY.md).
+up-prod: up
 
 # Seed the synthetic catalog (idempotent).
 seed:
