@@ -16,7 +16,7 @@ async function q(expr: string): Promise<number | null> {
 }
 
 export async function metricsSnapshot() {
-  const [p50, p99, hitRate, rps, backlog, unacked, evPub, evProc] =
+  const [p50, p99, hitRate, rps, backlog, unacked, evPub, evProc, vst, concurrent, rebuf, errRate] =
     await Promise.all([
       q("histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[30s])) by (le))"),
       q("histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[30s])) by (le))"),
@@ -26,6 +26,10 @@ export async function metricsSnapshot() {
       q("sum(rabbitmq_queue_messages_unacked)"),
       q("sum(rate(qoe_beacons_published_total[15s]))"),
       q("sum(rate(qoe_beacons_processed_total[15s]))"),
+      q('histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{route="/playback/start"}[30s])) by (le))'),
+      q("max(concurrent_streams)"),
+      q('sum(rate(qoe_beacons_processed_total{type="rebuffer"}[30s])) / clamp_min(sum(rate(qoe_beacons_processed_total{type=~"play|progress|rebuffer"}[30s])), 1)'),
+      q('sum(rate(qoe_beacons_processed_total{type="error"}[30s])) / clamp_min(sum(rate(qoe_beacons_processed_total[30s])), 1)'),
     ]);
 
   return {
@@ -37,6 +41,10 @@ export async function metricsSnapshot() {
     unacked: unacked == null ? null : Math.round(unacked),
     eventsPublished: evPub == null ? null : Math.round(evPub),
     eventsProcessed: evProc == null ? null : Math.round(evProc),
+    vstP95_ms: vst == null ? null : Math.round(vst * 1000 * 10) / 10,
+    concurrentStreams: concurrent == null ? null : Math.round(concurrent),
+    rebufferRatio: rebuf == null ? null : Math.round(rebuf * 1000) / 10, // percent
+    playbackErrorRate: errRate == null ? null : Math.round(errRate * 1000) / 10, // percent
   };
 }
 
