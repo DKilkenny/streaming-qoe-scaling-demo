@@ -25,7 +25,11 @@ export function getStrategy() {
 }
 
 export function setPrewarm(n: number) {
-  prewarm = Math.max(0, Math.floor(n));
+  // Clamp to [0, maxWorkers] and fall back to 0 on non-finite input (NaN,
+  // Infinity). An unclamped prewarm above maxWorkers would push `floor`
+  // above the reachable `active` count forever, wedging tick()'s pre-warm
+  // branch and permanently short-circuiting scale-up AND scale-down.
+  prewarm = Number.isFinite(n) ? Math.min(config.maxWorkers, Math.max(0, Math.floor(n))) : 0;
   logEvent(
     "prewarm",
     prewarm > 0 ? `pre-warmed to ${prewarm} workers ahead of a surge` : "pre-warm cleared"

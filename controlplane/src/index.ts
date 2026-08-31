@@ -141,18 +141,25 @@ async function main() {
     return { enabled: autoscalerEnabled() };
   });
 
-  app.post<{ Body: { strategy?: string } }>("/api/strategy", async (req) => {
+  app.post<{ Body: { strategy?: string } }>("/api/strategy", async (req, reply) => {
     const s = req.body?.strategy;
     if (s !== "reactive" && s !== "proactive") {
+      reply.code(400);
       return { error: "strategy must be 'reactive' or 'proactive'" };
     }
     setStrategy(s);
     return { strategy: getStrategy() };
   });
 
-  app.post<{ Body: { workers?: number } }>("/api/prewarm", async (req) => {
-    const n = Math.max(0, Math.floor(Number(req.body?.workers ?? 0)));
-    setPrewarm(n);
+  app.post<{ Body: { workers?: number } }>("/api/prewarm", async (req, reply) => {
+    const raw = Number(req.body?.workers ?? 0);
+    if (!Number.isFinite(raw)) {
+      reply.code(400);
+      return { error: "workers must be a finite number" };
+    }
+    // setPrewarm clamps to [0, maxWorkers]; the response reflects the
+    // clamped value, not the raw request.
+    setPrewarm(raw);
     return { prewarm: getPrewarm() };
   });
 
