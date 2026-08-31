@@ -110,14 +110,19 @@ button.active {
 .explain .tag { display: inline-block; font-size: 11px; color: var(--muted); margin-bottom: 6px; font-family: var(--mono); }
 
 /* ---- Basic/Advanced tabs ---- */
-.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+.tabs { display: flex; gap: 6px; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .tab-btn {
-  background: transparent; border: none; border-bottom: 2px solid transparent; border-radius: 0;
-  color: var(--muted); padding: 8px 4px; margin-right: 18px; font-size: 12.5px;
+  background: transparent; border: 1px solid transparent; border-radius: 7px;
+  color: var(--muted); padding: 6px 12px; font-size: 12.5px;
   font-weight: 600; text-transform: uppercase; letter-spacing: .5px; cursor: pointer;
 }
 .tab-btn:hover { color: var(--text); border-color: transparent; }
-.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+/* Explicit background + text color here (not just relying on the generic
+   button.active rule) — .tab-btn.active's higher specificity was winning the
+   `color` fight against button.active but losing the `background` one,
+   leaving accent-on-accent text that was invisible. Both are set together
+   so the pair can never drift apart again. */
+.tab-btn.active { background: var(--accent); color: #06122e; border-color: var(--accent); }
 
 /* ---- Basic view: guided tours ---- */
 .basic-intro { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0 0 16px; }
