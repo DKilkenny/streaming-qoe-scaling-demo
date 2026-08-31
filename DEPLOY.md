@@ -50,20 +50,22 @@ Your domain is your dashed IP + `.sslip.io` — for `143.42.9.17` that's
 `143-42-9-17.sslip.io` (it resolves to your IP automatically, free, and Caddy can
 get a real Let's Encrypt cert for it).
 
-Generate a bcrypt password hash:
+Generate a bcrypt password hash and write `caddy.env` in one go. **Important:**
+a bcrypt hash contains `$` characters, and Docker Compose performs variable
+interpolation on `env_file` values — so a raw `$2a$14$...` hash gets silently
+mangled (Compose eats `$name` as an undefined variable) and Caddy then fails to
+start with `illegal base64 data`. The fix is to **double every `$` to `$$`**,
+which Compose collapses back to a single `$`. This snippet does that escaping for
+you automatically — just set your domain and password:
 ```bash
-docker run --rm caddy caddy hash-password --plaintext 'PICK-A-STRONG-PASSWORD'
-# copy the $2a$... hash it prints
+SITE=143-42-9-17.sslip.io          # your dashed IP + .sslip.io
+HASH=$(docker run --rm caddy caddy hash-password --plaintext 'PICK-A-STRONG-PASSWORD')
+printf 'SITE_ADDRESS=%s\nBASIC_AUTH_USER=angel\nBASIC_AUTH_HASH=%s\n' \
+  "$SITE" "${HASH//\$/\$\$}" > caddy.env
+cat caddy.env    # sanity-check: the hash line should show $$2a$$14$$...
 ```
-
-Create `caddy.env` in the repo root:
-```bash
-cat > caddy.env <<'EOF'
-SITE_ADDRESS=143-42-9-17.sslip.io
-BASIC_AUTH_USER=angel
-BASIC_AUTH_HASH=$2a$14$...paste-the-hash-here...
-EOF
-```
+(If you'd rather write it by hand, take the `$2a$14$...` from `caddy
+hash-password` and double each `$`: `$$2a$$14$$...`.)
 
 Swap the dev Caddyfile for the prod one (the caddy service mounts
 `caddy/Caddyfile`, so replacing its contents is the cleanest, override-free way
