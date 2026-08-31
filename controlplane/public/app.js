@@ -1,6 +1,8 @@
 const $ = (id) => document.getElementById(id);
 const MAXPTS = 90;
+const POLL_MS = 1500;
 const series = { concurrent: [], vst: [], backlog: [], workers: [] };
+let latestStatus = null; // last /api/status payload, used by tours + tooltips
 
 // ---- dependency-free sparkline ----
 function drawSpark(canvas, data, color) {
@@ -37,6 +39,110 @@ function drawSpark(canvas, data, color) {
 function setActive(btn, active) {
   btn.classList.toggle("active", active);
 }
+
+// ---- sparkline hover: crosshair + tooltip ----
+const sparkMeta = {
+  "c-concurrent": { key: "concurrent", color: "#5b8cff", label: "Concurrent streams", fmt: (v) => Math.round(v).toLocaleString() },
+  "c-vst": { key: "vst", color: "#f5b445", label: "VST p95", fmt: (v) => Math.round(v) + " ms" },
+  "c-backlog": { key: "backlog", color: "#f2555a", label: "Backlog", fmt: (v) => Math.round(v).toLocaleString() },
+  "c-workers": { key: "workers", color: "#34d399", label: "Active workers", fmt: (v) => Math.round(v) },
+};
+let hoverCanvasId = null;
+let hoverIndex = null;
+
+function sparkX(w, i) {
+  const pad = 8;
+  return pad + (i / (MAXPTS - 1)) * (w - pad * 2);
+}
+function sparkY(h, v, min, max) {
+  const pad = 8, span = Math.max(max - min, 1);
+  return h - pad - ((v - min) / span) * (h - pad * 2);
+}
+
+function drawCrosshair(canvasId) {
+  if (hoverCanvasId !== canvasId || hoverIndex == null) return;
+  const canvas = $(canvasId);
+  const meta = sparkMeta[canvasId];
+  const data = series[meta.key];
+  if (!data.length) return;
+  const idx = Math.min(hoverIndex, data.length - 1);
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const max = Math.max(...data, 1), min = Math.min(...data, 0);
+  const x = sparkX(w, idx);
+  const y = sparkY(h, data[idx], min, max);
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x, 2);
+  ctx.lineTo(x, h - 2);
+  ctx.strokeStyle = "rgba(230,235,242,0.35)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+  ctx.fillStyle = "#fff";
+  ctx.strokeStyle = meta.color;
+  ctx.lineWidth = 2;
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+// draws the live line, then re-applies the crosshair on top if this canvas
+// is currently being hovered — keeps the crosshair alive across live polling.
+function redrawSpark(canvasId) {
+  const meta = sparkMeta[canvasId];
+  drawSpark($(canvasId), series[meta.key], meta.color);
+  drawCrosshair(canvasId);
+}
+
+function showTooltip(canvasId, idx, clientX, clientY) {
+  const meta = sparkMeta[canvasId];
+  const data = series[meta.key];
+  if (idx >= data.length) return;
+  const v = data[idx];
+  const fromEnd = data.length - 1 - idx;
+  const timeLabel = fromEnd === 0 ? "now" : `-${(fromEnd * (POLL_MS / 1000)).toFixed(1)}s`;
+  const tip = $("spark-tooltip");
+  tip.innerHTML = `<strong>${meta.fmt(v)}</strong><span>${meta.label} &middot; ${timeLabel}</span>`;
+  tip.style.left = clientX + 14 + "px";
+  tip.style.top = clientY - 14 + "px";
+  tip.classList.remove("hidden");
+}
+function hideTooltip() {
+  $("spark-tooltip").classList.add("hidden");
+}
+
+function initSparkHover(canvasId) {
+  const canvas = $(canvasId);
+  const meta = sparkMeta[canvasId];
+  canvas.addEventListener("mousemove", (e) => {
+    const data = series[meta.key];
+    if (!data.length) return;
+    const rect = canvas.getBoundingClientRect();
+    const pad = 8;
+    const w = rect.width;
+    let frac = (e.clientX - rect.left - pad) / (w - pad * 2);
+    frac = Math.max(0, Math.min(1, frac));
+    let idx = Math.round(frac * (MAXPTS - 1));
+    idx = Math.max(0, Math.min(data.length - 1, idx));
+    hoverCanvasId = canvasId;
+    hoverIndex = idx;
+    redrawSpark(canvasId);
+    showTooltip(canvasId, idx, e.clientX, e.clientY);
+  });
+  canvas.addEventListener("mouseleave", () => {
+    if (hoverCanvasId === canvasId) {
+      hoverCanvasId = null;
+      hoverIndex = null;
+      redrawSpark(canvasId);
+    }
+    hideTooltip();
+  });
+}
+Object.keys(sparkMeta).forEach(initSparkHover);
 
 function push(key, v) {
   const arr = series[key];
@@ -88,8 +194,8 @@ const PRESET_NOTES = {
   stop: "Traffic stopped. Watch: the backlog drains, and once the surge has cleared, the autoscaler sheds workers back toward the floor.",
 };
 const STRATEGY_NOTES = {
-  reactive: "Reactive scales only after the backlog crosses a threshold (2,000 queued beacons). Simple, but new workers arrive ~12s late (simulated) relative to the surge, so the backlog spikes higher before it's tamed.",
-  proactive: "Proactive scales on utilization: it provisions the next worker at ~75% load, before the backlog builds. New workers still cold-start (~12s, simulated), so getting ahead matters.",
+  reactive: "Reactive scales only after the backlog crosses a threshold (2,000 queued beacons). Simple, but new workers arrive ~12s late (simulated) relative to the surge, so the backlog spikes higher before it's tamed (a real Fargate cold-start is ~60-90s — which is why you pre-warm).",
+  proactive: "Proactive scales on utilization: it provisions the next worker at ~75% load, before the backlog builds. New workers still cold-start (~12s, simulated), so getting ahead matters (a real Fargate cold-start is ~60-90s — which is why you pre-warm).",
 };
 const PREWARM_NOTE_ON = "Capacity raised ahead of a known surge (premieres are scheduled). Watch the premiere barely move the backlog.";
 const PREWARM_NOTE_OFF = "Pre-warm floor cleared. Capacity will ride the scaling strategy above instead of a fixed floor.";
@@ -97,6 +203,7 @@ const PREWARM_NOTE_OFF = "Pre-warm floor cleared. Capacity will ride the scaling
 async function poll() {
   let s;
   try { s = await (await fetch("/api/status")).json(); } catch { return; }
+  latestStatus = s;
   const m = s.metrics || {};
 
   $("t-vst").textContent = m.vstP95_ms == null ? "–" : m.vstP95_ms + " ms";
@@ -115,10 +222,10 @@ async function poll() {
   push("vst", m.vstP95_ms || 0);
   push("backlog", m.backlog || 0);
   push("workers", s.workers < 0 ? 0 : s.workers);
-  drawSpark($("c-concurrent"), series.concurrent, "#5b8cff");
-  drawSpark($("c-vst"), series.vst, "#f5b445");
-  drawSpark($("c-backlog"), series.backlog, "#f2555a");
-  drawSpark($("c-workers"), series.workers, "#34d399");
+  redrawSpark("c-concurrent");
+  redrawSpark("c-vst");
+  redrawSpark("c-backlog");
+  redrawSpark("c-workers");
 
   if (!autoscalerLocked) $("autoscaler").checked = !!s.autoscaler;
   if (!apiscalerLocked) $("apiscaler").checked = !!s.apiAutoscaler;
@@ -215,5 +322,171 @@ $("explain").addEventListener("click", async () => {
   }
 });
 
+// ---- Basic/Advanced tabs: remembered per-browser ----
+const TAB_KEY = "console.activeTab";
+function getStoredTab() {
+  try { return localStorage.getItem(TAB_KEY); } catch { return null; }
+}
+function setStoredTab(v) {
+  try { localStorage.setItem(TAB_KEY, v); } catch { /* ignore */ }
+}
+function applyTab(tab) {
+  const basic = tab !== "advanced";
+  $("basic-view").classList.toggle("hidden", !basic);
+  $("advanced-view").classList.toggle("hidden", basic);
+  $("tab-basic").classList.toggle("active", basic);
+  $("tab-advanced").classList.toggle("active", !basic);
+  $("tab-basic").setAttribute("aria-selected", String(basic));
+  $("tab-advanced").setAttribute("aria-selected", String(!basic));
+}
+applyTab(getStoredTab() === "advanced" ? "advanced" : "basic");
+$("tab-basic").addEventListener("click", () => { applyTab("basic"); setStoredTab("basic"); });
+$("tab-advanced").addEventListener("click", () => { applyTab("advanced"); setStoredTab("advanced"); });
+
+// ---- Guided tours ----
+// Each tour drives the same API endpoints a human would click, on a timed
+// sequence, narrating through #tour-caption. `tourGeneration` invalidates any
+// in-flight tour when a new one starts or Stop is pressed, so stale timers
+// and awaits become no-ops instead of racing the new state.
+let tourGeneration = 0;
+let activeTour = null; // 'A' | 'B' | null
+let tourTimers = [];
+
+function setCaption(html) { $("tour-caption").innerHTML = html; }
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    const id = setTimeout(resolve, ms);
+    tourTimers.push(id);
+  });
+}
+
+function clearTourTimers() {
+  tourTimers.forEach(clearTimeout);
+  tourTimers = [];
+}
+
+// Polls latestStatus (already refreshed by the live poll() loop) until
+// `check` passes or `timeoutMs` elapses, bailing early if the tour was
+// invalidated (stopped, or another tour started) in the meantime.
+async function waitForCondition(check, timeoutMs, myGen, intervalMs = 1200) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (myGen !== tourGeneration) return false;
+    if (check(latestStatus)) return true;
+    await sleep(intervalMs);
+    if (myGen !== tourGeneration) return false;
+  }
+  return check(latestStatus);
+}
+
+function updateTourUI() {
+  const btnA = $("tour-a-btn"), btnB = $("tour-b-btn"), stopBtn = $("tour-stop-btn");
+  btnA.disabled = !!activeTour;
+  btnB.disabled = !!activeTour;
+  btnA.classList.toggle("active", activeTour === "A");
+  btnB.classList.toggle("active", activeTour === "B");
+  stopBtn.classList.toggle("hidden", !activeTour);
+}
+
+function finishTour() {
+  activeTour = null;
+  updateTourUI();
+}
+
+async function stopTour() {
+  if (!activeTour) return;
+  tourGeneration++; // invalidates every pending await in the running tour
+  clearTourTimers();
+  await post("/api/preset", { name: "stop" });
+  setCaption("Tour stopped.");
+  activeTour = null;
+  updateTourUI();
+}
+
+async function runTourA() {
+  if (activeTour) return;
+  const myGen = ++tourGeneration;
+  activeTour = "A";
+  updateTourUI();
+
+  await post("/api/apiscaler", { enabled: true });
+  await post("/api/strategy", { strategy: "proactive" });
+  if (myGen !== tourGeneration) return;
+  setCaption("It&rsquo;s Tuesday night &mdash; a new episode just dropped. Everyone hits play at once.");
+
+  await sleep(2500);
+  if (myGen !== tourGeneration) return;
+  await post("/api/preset", { name: "playbackSurge" });
+
+  await sleep(5000);
+  if (myGen !== tourGeneration) return;
+  setCaption("One server is overwhelmed &mdash; playback-start time (VST) is climbing.");
+
+  await waitForCondition((s) => s && s.apiInstances > 1, 15000, myGen);
+  if (myGen !== tourGeneration) return;
+  const apiN = latestStatus && latestStatus.apiInstances != null ? latestStatus.apiInstances : 4;
+  setCaption(`The read tier is provisioning servers behind the load balancer to absorb it &mdash; 1 &rarr; ${apiN}. (Cold-start is compressed to ~12s here &mdash; a real Fargate cold-start is ~60-90s, which is why you pre-warm.)`);
+
+  await waitForCondition((s) => s && s.metrics && s.metrics.vstP95_ms != null && s.metrics.vstP95_ms < 100, 45000, myGen, 1500);
+  if (myGen !== tourGeneration) return;
+  const vst = latestStatus && latestStatus.metrics && latestStatus.metrics.vstP95_ms != null ? latestStatus.metrics.vstP95_ms : "<100";
+  setCaption(`Recovered &mdash; playback starts are fast again (VST ~${vst}ms) under a ~4,000/sec rush. And the analytics pipeline (workers) never even flinched &mdash; the two paths are decoupled.`);
+
+  await sleep(4500);
+  if (myGen !== tourGeneration) return;
+  await post("/api/preset", { name: "stop" });
+  setCaption("The rush passes; the read tier scales back down as demand falls.");
+
+  await sleep(6000);
+  if (myGen !== tourGeneration) return;
+  setCaption("Tour complete &mdash; back to idle. Try &ldquo;Survive a failure&rdquo; next, or explore the Advanced tab.");
+  finishTour();
+}
+
+async function runTourB() {
+  if (activeTour) return;
+  const myGen = ++tourGeneration;
+  activeTour = "B";
+  updateTourUI();
+
+  await post("/api/autoscaler", { enabled: true });
+  if (myGen !== tourGeneration) return;
+  await post("/api/preset", { name: "episodePremiere" });
+  setCaption("A premiere is running &mdash; analytics events flood in and the worker pool scales to keep up.");
+
+  await sleep(12000);
+  if (myGen !== tourGeneration) return;
+  setCaption("Now watch what happens when I kill the entire analytics tier.");
+
+  await sleep(1500);
+  if (myGen !== tourGeneration) return;
+  await post("/api/chaos/worker-outage");
+
+  await sleep(5000);
+  if (myGen !== tourGeneration) return;
+  const backlog0 = latestStatus && latestStatus.metrics && latestStatus.metrics.backlog != null ? latestStatus.metrics.backlog.toLocaleString() : "rising";
+  setCaption(`The event queue is backing up with no one to drain it (backlog ${backlog0}) &mdash; but watch playback latency: dead flat. Decoupled paths.`);
+
+  await waitForCondition((s) => s && s.workers > 0 && s.metrics && s.metrics.backlog != null && s.metrics.backlog < 500, 30000, myGen, 1500);
+  if (myGen !== tourGeneration) return;
+  const w = latestStatus && latestStatus.workers != null ? latestStatus.workers : "several";
+  setCaption(`Capacity comes back (workers ${w}) and drains the backlog. (Cold-start is compressed to ~12s in this demo &mdash; a real Fargate task takes ~60-90s.)`);
+
+  await sleep(4000);
+  if (myGen !== tourGeneration) return;
+  await post("/api/preset", { name: "stop" });
+  setCaption("Recovered. Playback never noticed.");
+
+  await sleep(5000);
+  if (myGen !== tourGeneration) return;
+  setCaption("Tour complete &mdash; back to idle. Try &ldquo;The premiere rush&rdquo; next, or explore the Advanced tab.");
+  finishTour();
+}
+
+$("tour-a-btn").addEventListener("click", () => { runTourA(); });
+$("tour-b-btn").addEventListener("click", () => { runTourB(); });
+$("tour-stop-btn").addEventListener("click", () => { stopTour(); });
+
 poll();
-setInterval(poll, 1500);
+setInterval(poll, POLL_MS);

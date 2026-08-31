@@ -109,6 +109,47 @@ button.active {
 .explain { margin-top: 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 13.5px; line-height: 1.55; }
 .explain .tag { display: inline-block; font-size: 11px; color: var(--muted); margin-bottom: 6px; font-family: var(--mono); }
 
+/* ---- Basic/Advanced tabs ---- */
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+.tab-btn {
+  background: transparent; border: none; border-bottom: 2px solid transparent; border-radius: 0;
+  color: var(--muted); padding: 8px 4px; margin-right: 18px; font-size: 12.5px;
+  font-weight: 600; text-transform: uppercase; letter-spacing: .5px; cursor: pointer;
+}
+.tab-btn:hover { color: var(--text); border-color: transparent; }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-view.hidden { display: none; }
+
+/* ---- Basic view: guided tours ---- */
+.basic-intro { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0 0 16px; }
+.tour-buttons { display: flex; flex-direction: column; gap: 10px; }
+.tour-btn {
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+  padding: 16px; font-size: 14px; font-weight: 650; border-radius: 10px; text-align: left; cursor: pointer;
+}
+.tour-btn:hover:not(:disabled) { border-color: var(--accent); }
+.tour-btn.active { background: var(--accent); color: #06122e; border-color: var(--accent); }
+.tour-btn:disabled { opacity: .45; cursor: not-allowed; }
+#tour-stop-btn { margin-top: 10px; width: 100%; color: var(--danger); border-color: #4a2a2e; }
+#tour-stop-btn:hover { border-color: var(--danger); background: #2a1113; }
+.tour-caption-box {
+  margin-top: 18px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; min-height: 96px;
+}
+.tour-caption-label { display: block; color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 600; margin-bottom: 8px; }
+#tour-caption { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--text); }
+
+/* ---- sparkline hover tooltip ---- */
+.spark-tooltip {
+  position: fixed; z-index: 50; pointer-events: none;
+  background: #0b0e14; border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 10px; font-size: 11.5px; line-height: 1.4; color: var(--text);
+  box-shadow: 0 4px 14px rgba(0,0,0,.45);
+}
+.spark-tooltip strong { display: block; font-family: var(--mono); font-size: 13px; font-weight: 650; }
+.spark-tooltip span { color: var(--muted); }
+.chart canvas { cursor: crosshair; }
+
 .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-content: start; }
 .chart h3 { margin: 0 0 6px; font-size: 12px; color: var(--muted); font-weight: 500; }
 .chart canvas { width: 100%; display: block; background: var(--panel-2); border-radius: 8px; }

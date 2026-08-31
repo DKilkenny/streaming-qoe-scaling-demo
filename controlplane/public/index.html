@@ -27,8 +27,8 @@
     <div class="framing-body">
       <p>This is a small streaming backend with two decoupled paths: a <strong>read path</strong> that starts playback sessions and serves the catalog, and a <strong>write path</strong> that ingests QoE beacons (rebuffers, errors, completions) into a queue drained by a pool of workers.</p>
       <p>Because the paths are decoupled, playback-start time (VST) stays fast even when the write pipeline is under heavy load &mdash; that separation is the point of the architecture, and what this demo is built to show.</p>
-      <p>The two paths scale independently, each on its own signal: the <strong>read/API tier</strong> adds or removes API containers behind the load balancer when playback-start latency (VST) climbs &mdash; a synchronized play-button rush, like an episode drop; the <strong>write/worker tier</strong> adds or removes beacon workers based on queue backlog and utilization. They watch different signals and never compete for the same knob. A freshly provisioned instance on either tier takes ~12s to &ldquo;warm up&rdquo; before it helps.</p>
-      <p><strong>Honesty note:</strong> VST, backlog, utilization, worker counts, and API instance counts are measured live from the running stack. The viewer traffic, each worker&rsquo;s cold-start delay, and each API instance&rsquo;s saturation point are simulated &mdash; they model the shape of a real surge, not literal AWS provisioning times or capacity limits.</p>
+      <p>The two paths scale independently, each on its own signal: the <strong>read/API tier</strong> adds or removes API containers behind the load balancer when playback-start latency (VST) climbs &mdash; a synchronized play-button rush, like an episode drop; the <strong>write/worker tier</strong> adds or removes beacon workers based on queue backlog and utilization. They watch different signals and never compete for the same knob. A freshly provisioned instance on either tier takes ~12s to &ldquo;warm up&rdquo; before it helps (compressed for this demo &mdash; see the honesty note below).</p>
+      <p><strong>Honesty note:</strong> VST, backlog, utilization, worker counts, and API instance counts are measured live from the running stack. The viewer traffic, each worker&rsquo;s cold-start delay, and each API instance&rsquo;s saturation point are simulated &mdash; they model the shape of a real surge, not literal AWS provisioning times or capacity limits. The cold-start delay itself is compressed to ~12s here so a tour finishes in under a minute; a real Fargate task cold-start is ~60&ndash;90s.</p>
     </div>
   </section>
 
@@ -59,7 +59,7 @@
       <span class="hint">Queued beacons waiting on workers.</span>
     </div>
     <div class="tile">
-      <span class="label" title="Worker containers currently processing the beacon queue. &quot;+N warming&quot; means N more are provisioned but still in their ~12s simulated cold-start.">Active workers</span>
+      <span class="label" title="Worker containers currently processing the beacon queue. &quot;+N warming&quot; means N more are provisioned but still in their ~12s simulated cold-start (a real Fargate cold-start is ~60-90s &mdash; which is why you pre-warm).">Active workers</span>
       <span class="value-row"><span class="value" id="t-workers">–</span><span class="badge" id="t-workers-badge"></span></span>
       <span class="hint">Processing the queue now. &ldquo;+N warming&rdquo; are cold-starting.</span>
     </div>
@@ -87,52 +87,72 @@
 
   <div class="grid">
     <section class="panel controls">
-      <h2>Load</h2>
-      <div class="row">
-        <input type="range" id="rps" min="0" max="8000" step="100" value="0" />
-        <output id="rps-out">0 rps</output>
-      </div>
-      <div class="btn-row">
-        <button data-preset="eveningPeak">Evening peak</button>
-        <button data-preset="trailerDrop">Trailer drop</button>
-        <button data-preset="episodePremiere" class="warn">Episode premiere</button>
-        <button data-preset="playbackSurge" class="warn">Playback surge (thundering herd)</button>
-        <button data-preset="stop" class="ghost">Stop</button>
+      <div class="tabs" role="tablist">
+        <button class="tab-btn" id="tab-basic" type="button" role="tab" aria-selected="true" data-tab="basic">Basic</button>
+        <button class="tab-btn" id="tab-advanced" type="button" role="tab" aria-selected="false" data-tab="advanced">Advanced</button>
       </div>
 
-      <h2>Resilience</h2>
-      <div class="btn-row">
-        <button id="chaos" class="danger">Simulate worker outage</button>
-        <button id="scale-max">Scale to max workers</button>
-      </div>
-      <label class="toggle">
-        <input type="checkbox" id="autoscaler" />
-        <span>Autoscaler (self-heal on backlog)</span>
-      </label>
-      <div class="stepper">
-        <span>Workers:</span>
-        <button id="w-down">−</button>
-        <span id="w-count">–</span>
-        <button id="w-up">+</button>
-      </div>
-      <label class="toggle">
-        <input type="checkbox" id="apiscaler" />
-        <span>API autoscaler (self-heal on VST)</span>
-      </label>
-
-      <h2>Scaling strategy</h2>
-      <div class="btn-row">
-        <button data-strategy="reactive">Reactive</button>
-        <button data-strategy="proactive">Proactive</button>
-      </div>
-      <div class="btn-row">
-        <button id="prewarm">Pre-warm for premiere</button>
-        <button id="prewarm-clear" class="ghost">Clear pre-warm</button>
+      <div id="basic-view" class="tab-view">
+        <p class="basic-intro">Two guided tours drive the system live and narrate what&rsquo;s happening, using the same API calls a human would click. No knobs required.</p>
+        <div class="tour-buttons">
+          <button id="tour-a-btn" class="tour-btn" type="button">▶ The premiere rush</button>
+          <button id="tour-b-btn" class="tour-btn" type="button">▶ Survive a failure</button>
+        </div>
+        <button id="tour-stop-btn" class="ghost hidden" type="button">■ Stop tour</button>
+        <div class="tour-caption-box">
+          <span class="tour-caption-label">Narration</span>
+          <p id="tour-caption">Pick a tour above to watch the system scale live, with plain-English narration as it happens.</p>
+        </div>
       </div>
 
-      <h2>AI incident explainer</h2>
-      <button id="explain" class="accent">Explain what's happening</button>
-      <div id="explain-out" class="explain hidden"></div>
+      <div id="advanced-view" class="tab-view hidden">
+        <h2>Load</h2>
+        <div class="row">
+          <input type="range" id="rps" min="0" max="8000" step="100" value="0" />
+          <output id="rps-out">0 rps</output>
+        </div>
+        <div class="btn-row">
+          <button data-preset="eveningPeak">Evening peak</button>
+          <button data-preset="trailerDrop">Trailer drop</button>
+          <button data-preset="episodePremiere" class="warn">Episode premiere</button>
+          <button data-preset="playbackSurge" class="warn">Playback surge (thundering herd)</button>
+          <button data-preset="stop" class="ghost">Stop</button>
+        </div>
+
+        <h2>Resilience</h2>
+        <div class="btn-row">
+          <button id="chaos" class="danger">Simulate worker outage</button>
+          <button id="scale-max">Scale to max workers</button>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="autoscaler" />
+          <span>Autoscaler (self-heal on backlog)</span>
+        </label>
+        <div class="stepper">
+          <span>Workers:</span>
+          <button id="w-down">−</button>
+          <span id="w-count">–</span>
+          <button id="w-up">+</button>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="apiscaler" />
+          <span>API autoscaler (self-heal on VST)</span>
+        </label>
+
+        <h2>Scaling strategy</h2>
+        <div class="btn-row">
+          <button data-strategy="reactive">Reactive</button>
+          <button data-strategy="proactive">Proactive</button>
+        </div>
+        <div class="btn-row">
+          <button id="prewarm">Pre-warm for premiere</button>
+          <button id="prewarm-clear" class="ghost">Clear pre-warm</button>
+        </div>
+
+        <h2>AI incident explainer</h2>
+        <button id="explain" class="accent">Explain what's happening</button>
+        <div id="explain-out" class="explain hidden"></div>
+      </div>
     </section>
 
     <section class="panel charts">
@@ -147,6 +167,8 @@
       <ul id="feed"></ul>
     </section>
   </div>
+
+  <div id="spark-tooltip" class="spark-tooltip hidden"></div>
 
   <script src="app.js"></script>
 </body>
