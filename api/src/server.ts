@@ -7,6 +7,9 @@ import { catalogRoutes } from "./routes/catalog";
 import { discoverRoutes } from "./routes/discover";
 import { searchRoutes } from "./routes/search";
 import { beaconRoutes } from "./routes/beacon";
+import { playbackRoutes } from "./routes/playback";
+import { liveStreamCount } from "./lib/sessions";
+import { setConcurrentStreams } from "./telemetry";
 
 export async function startServer() {
   const app = Fastify({ logger: { level: "warn" } });
@@ -31,6 +34,7 @@ export async function startServer() {
   await app.register(discoverRoutes);
   await app.register(searchRoutes);
   await app.register(beaconRoutes);
+  await app.register(playbackRoutes);
 
   await waitForDb();
   await getChannel(); // establish the publish channel up front
@@ -38,4 +42,8 @@ export async function startServer() {
   await app.listen({ port: config.port, host: "0.0.0.0" });
   // eslint-disable-next-line no-console
   console.log(`[api] listening on :${config.port}`);
+
+  // Publish the live-session count to Prometheus every 3s (global gauge; query
+  // with max(concurrent_streams) since all replicas report the same value).
+  setInterval(async () => setConcurrentStreams(await liveStreamCount()), 3_000);
 }
