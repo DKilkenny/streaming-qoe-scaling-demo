@@ -78,5 +78,10 @@ export async function startWorker() {
   startMetricsServer(config.port); // expose worker counters for Prometheus
   // Exit promptly on SIGTERM so `docker stop` (scale-down) is fast and clean.
   process.on("SIGTERM", () => process.exit(0));
+  if (config.workerColdStartMs > 0) {
+    // eslint-disable-next-line no-console
+    console.log(`[worker] cold start: warming up for ${config.workerColdStartMs}ms before consuming`);
+    await new Promise((r) => setTimeout(r, config.workerColdStartMs));
+  }
   await consumeForever();
 }

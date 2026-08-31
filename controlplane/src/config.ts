@@ -14,6 +14,10 @@ export const config = {
   // beacon publish rate has dropped below this, so the worker count holds flat
   // during sustained load instead of flapping when the queue momentarily drains.
   scaleDownPublishRate: Number(process.env.SCALE_DOWN_PUBLISH_RATE ?? 500),
+  // Cold-start window used to classify a worker as "warming" vs "active".
+  workerColdStartMs: Number(process.env.WORKER_COLDSTART_MS ?? 12000),
+  // Measured steady-state per-worker beacon throughput, for the utilization signal.
+  workerCapacity: Number(process.env.WORKER_CAPACITY ?? 550),
   // AI incident explainer via OpenRouter (OpenAI-compatible). Model is
   // overridable; verify the exact slug at https://openrouter.ai/models.
   openrouterKey: process.env.OPENROUTER_API_KEY ?? "",

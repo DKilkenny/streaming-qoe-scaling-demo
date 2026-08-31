@@ -16,4 +16,7 @@ export const config = {
   otelEnabled: (process.env.OTEL_ENABLED ?? "false") === "true",
   otelEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "",
   qoeQueue: "qoe",
+  // Simulated provisioning/init time: a newly started worker waits this long
+  // before opening its consumer, modeling an ECS/Fargate task cold start.
+  workerColdStartMs: Number(process.env.WORKER_COLDSTART_MS ?? 0),
 };

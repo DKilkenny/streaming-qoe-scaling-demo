@@ -84,6 +84,7 @@ services:
       ROLE: worker
       WORKER_PREFETCH: "4"
       WORKER_EVENT_MS: "4"
+      WORKER_COLDSTART_MS: "12000"
       OTEL_ENABLED: "${OTEL_ENABLED:-true}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318}"
       OTEL_TRACES_SAMPLER: "parentbased_traceidratio"
@@ -157,6 +158,8 @@ services:
       SCALE_UP_BACKLOG: "2000"
       SCALE_DOWN_BACKLOG: "200"
       SCALE_DOWN_PUBLISH_RATE: "500"
+      WORKER_COLDSTART_MS: "12000"
+      WORKER_CAPACITY: "550"
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       OPENROUTER_MODEL: "${OPENROUTER_MODEL:-google/gemini-3.1-flash-lite}"
     ports:
