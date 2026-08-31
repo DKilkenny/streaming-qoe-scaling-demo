@@ -53,6 +53,7 @@ async function post(path, body) {
 }
 
 let autoscalerLocked = false;
+let apiscalerLocked = false;
 let strategyLocked = false;
 let prewarmLocked = false;
 
@@ -83,6 +84,7 @@ const PRESET_NOTES = {
   eveningPeak: "Simulating a modest, steady evening viewership bump: mixed browsing, search, and playback. Watch: metrics stay well within normal range and the autoscaler shouldn't need to do much.",
   trailerDrop: "Simulating a trailer-drop spike: a burst of catalog and search traffic. Watch: read-path load (discover/search) rises while playback stays a smaller share of it.",
   episodePremiere: "Simulating a synchronized viewer surge (an episode drop): everyone opens the same title at once. Watch: reads stay fast (VST) while the beacon backlog builds and the autoscaler provisions workers.",
+  playbackSurge: "Everyone presses play at once when the episode drops — a read-path thundering herd. Watch VST spike as one API instance saturates, then recover as the read tier scales out. (VST is a trailing p95, so recovery shows a few seconds after the instances come up.)",
   stop: "Traffic stopped. Watch: the backlog drains, and once the surge has cleared, the autoscaler sheds workers back toward the floor.",
 };
 const STRATEGY_NOTES = {
@@ -106,6 +108,8 @@ async function poll() {
   $("t-workers-badge").textContent = s.workersWarming ? `+${s.workersWarming} warming` : "";
   $("w-count").textContent = s.workers < 0 ? "–" : s.workers;
   $("t-util").textContent = s.utilization == null ? "–" : s.utilization + "%";
+  $("t-api").textContent = s.apiInstances == null || s.apiInstances < 0 ? "n/a" : String(s.apiInstances);
+  $("t-readrps").textContent = s.readRps == null ? "–" : Math.round(s.readRps).toLocaleString();
 
   push("concurrent", m.concurrentStreams || 0);
   push("vst", m.vstP95_ms || 0);
@@ -117,6 +121,7 @@ async function poll() {
   drawSpark($("c-workers"), series.workers, "#34d399");
 
   if (!autoscalerLocked) $("autoscaler").checked = !!s.autoscaler;
+  if (!apiscalerLocked) $("apiscaler").checked = !!s.apiAutoscaler;
   if (s.jaegerUrl) $("jaeger-link").href = s.jaegerUrl;
 
   if (!strategyLocked) {
@@ -165,6 +170,11 @@ $("autoscaler").addEventListener("change", async (e) => {
   autoscalerLocked = true;
   await post("/api/autoscaler", { enabled: e.target.checked });
   setTimeout(() => (autoscalerLocked = false), 1500);
+});
+$("apiscaler").addEventListener("change", async (e) => {
+  apiscalerLocked = true;
+  await post("/api/apiscaler", { enabled: e.target.checked });
+  setTimeout(() => (apiscalerLocked = false), 1500);
 });
 document.querySelectorAll("[data-strategy]").forEach((b) =>
   b.addEventListener("click", async () => {

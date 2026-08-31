@@ -27,8 +27,8 @@
     <div class="framing-body">
       <p>This is a small streaming backend with two decoupled paths: a <strong>read path</strong> that starts playback sessions and serves the catalog, and a <strong>write path</strong> that ingests QoE beacons (rebuffers, errors, completions) into a queue drained by a pool of workers.</p>
       <p>Because the paths are decoupled, playback-start time (VST) stays fast even when the write pipeline is under heavy load &mdash; that separation is the point of the architecture, and what this demo is built to show.</p>
-      <p>The autoscaler watches utilization and backlog on the write path and adds or removes workers; a freshly provisioned worker takes ~12s to &ldquo;warm up&rdquo; before it helps.</p>
-      <p><strong>Honesty note:</strong> VST, backlog, utilization, and worker counts are measured live from the running stack. The viewer traffic and each worker&rsquo;s cold-start delay are simulated &mdash; they model the shape of a real premiere surge, not literal AWS provisioning times.</p>
+      <p>The two paths scale independently, each on its own signal: the <strong>read/API tier</strong> adds or removes API containers behind the load balancer when playback-start latency (VST) climbs &mdash; a synchronized play-button rush, like an episode drop; the <strong>write/worker tier</strong> adds or removes beacon workers based on queue backlog and utilization. They watch different signals and never compete for the same knob. A freshly provisioned instance on either tier takes ~12s to &ldquo;warm up&rdquo; before it helps.</p>
+      <p><strong>Honesty note:</strong> VST, backlog, utilization, worker counts, and API instance counts are measured live from the running stack. The viewer traffic, each worker&rsquo;s cold-start delay, and each API instance&rsquo;s saturation point are simulated &mdash; they model the shape of a real surge, not literal AWS provisioning times or capacity limits.</p>
     </div>
   </section>
 
@@ -68,6 +68,16 @@
       <span class="value" id="t-util">–</span>
       <span class="hint">Incoming beacon rate vs current worker capacity. Can exceed 100% while workers are still warming — that's the gap the scaler races to close.</span>
     </div>
+    <div class="tile">
+      <span class="label" title="Read-tier API containers, provisioned on demand behind the load balancer — scale out to hold VST under a playback surge. Real containers; each instance's saturation point is a labeled simulation.">API instances</span>
+      <span class="value" id="t-api">–</span>
+      <span class="hint">Read-tier containers behind the load balancer. Scales on VST.</span>
+    </div>
+    <div class="tile">
+      <span class="label" title="Rate of play presses hitting the read/auth path — playback-start requests per second, measured live.">Playback-start RPS</span>
+      <span class="value" id="t-readrps">–</span>
+      <span class="hint">Play-button rate driving VST on the read path.</span>
+    </div>
   </section>
 
   <section class="panel note" id="note">
@@ -86,6 +96,7 @@
         <button data-preset="eveningPeak">Evening peak</button>
         <button data-preset="trailerDrop">Trailer drop</button>
         <button data-preset="episodePremiere" class="warn">Episode premiere</button>
+        <button data-preset="playbackSurge" class="warn">Playback surge (thundering herd)</button>
         <button data-preset="stop" class="ghost">Stop</button>
       </div>
 
@@ -104,6 +115,10 @@
         <span id="w-count">–</span>
         <button id="w-up">+</button>
       </div>
+      <label class="toggle">
+        <input type="checkbox" id="apiscaler" />
+        <span>API autoscaler (self-heal on VST)</span>
+      </label>
 
       <h2>Scaling strategy</h2>
       <div class="btn-row">
