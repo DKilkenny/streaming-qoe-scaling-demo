@@ -17,10 +17,16 @@ const COOLDOWN_MS = 3_000; // avoid flapping
 // even while an action is on cooldown.
 let highStreak = 0;
 const HIGH_STREAK_REQUIRED = 2;
+// Consecutive under-headroom ticks required before a scale-down acts, so a
+// momentary dip in read RPS mid-herd doesn't shed an instance prematurely.
+// Mirrors HIGH_STREAK_REQUIRED for the scale-up side.
+let lowStreak = 0;
+const LOW_STREAK_REQUIRED = 2;
 
 export function setApiAutoscaler(on: boolean) {
   enabled = on;
   highStreak = 0;
+  lowStreak = 0;
   logEvent("api-autoscaler", on ? "enabled" : "disabled");
 }
 
@@ -64,6 +70,21 @@ async function tick() {
     highStreak = 0;
   }
 
+  // Converge-down debounce: require the headroom check below to hold on
+  // LOW_STREAK_REQUIRED consecutive ticks before a scale-down acts, mirroring
+  // highStreak's role for scale-up. Tracked independently of the scale
+  // cooldown (computed here, above the cooldown return) so it keeps counting
+  // even while an action is on cooldown — otherwise the debounce would take
+  // much longer than intended to satisfy right after a scale event.
+  const headroom = (active - 1) * config.apiCapacity * config.apiScaleDownMargin;
+  const vstLow = !vstKnown || (vst as number) < config.vstScaleDownMs;
+  const hasSpareCapacity = (rps ?? 0) < headroom;
+  if (vstLow && hasSpareCapacity && active > config.minApi) {
+    lowStreak++;
+  } else {
+    lowStreak = 0;
+  }
+
   const now = Date.now();
   if (now - lastScale < COOLDOWN_MS) return;
 
@@ -78,21 +99,18 @@ async function tick() {
       "scale-up (read tier)",
       `VST ${vstLabel} > ${config.vstScaleUpMs}ms, provisioning API instance, api instances ${active} -> ${next}`
     );
-  } else if (
-    (!vstKnown || (vst as number) < config.vstScaleDownMs) &&
-    (rps ?? 0) < config.scaleDownReadRps &&
-    active > config.minApi
-  ) {
-    // VST is low (or unmeasured because traffic has stopped) AND read RPS
-    // has actually subsided (not just momentarily fast because the tier is
-    // over-provisioned): safe to shed an instance. The RPS gate keeps this
-    // from flapping mid-herd the same way the worker scaler's publish-rate
-    // gate does.
+  } else if (vstLow && hasSpareCapacity && active > config.minApi && lowStreak >= LOW_STREAK_REQUIRED) {
+    // Converge-down on proven spare capacity: rather than waiting for the
+    // herd to basically end (readRps -> 0), shed an instance as soon as
+    // current demand would still have headroom on one fewer instance. This
+    // lets the tier track demand proportionally on the way down (4->3->2->1
+    // as load falls) instead of holding at peak count until traffic dies.
     const next = await setDesiredApiInstances(active - 1);
     lastScale = now;
+    lowStreak = 0;
     logEvent(
       "scale-down (read tier)",
-      `VST ${vstLabel} < ${config.vstScaleDownMs}ms & read RPS ${rps ?? 0} < ${config.scaleDownReadRps}, api instances ${active} -> ${next}`
+      `readRps ${rps ?? 0} below headroom (${headroom.toFixed(0)}) for ${active - 1} instances, shedding ${active} -> ${next}`
     );
   }
 }

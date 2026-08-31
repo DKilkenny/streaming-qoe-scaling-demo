@@ -32,11 +32,16 @@ export const config = {
   // 1 instance) — confirmed while verifying the two autoscalers' separation.
   vstScaleUpMs: Number(process.env.VST_SCALE_UP_MS ?? 80),
   vstScaleDownMs: Number(process.env.VST_SCALE_DOWN_MS ?? 20),
-  // Don't shed api instances while the herd is still incoming, even if VST
-  // momentarily dips — only scale down once playback-start RPS has also
-  // dropped below this. Mirrors scaleDownPublishRate's role for the worker
-  // scaler, gated on the read-path's own signal instead of beacon publishes.
-  scaleDownReadRps: Number(process.env.SCALE_DOWN_READ_RPS ?? 100),
+  // Estimated sustainable playback-start throughput per API instance
+  // (derived from the saturation model: api/src/config.ts
+  // PLAYBACK_MAX_INFLIGHT / PLAYBACK_COST_MS). Used by the read-tier
+  // converge-down logic below to figure out how many instances current
+  // demand actually needs, instead of just watching VST recover.
+  apiCapacity: Number(process.env.API_CAPACITY ?? 2000),
+  // Safety margin applied to apiCapacity when deciding to shed an instance:
+  // only shed if read RPS stays under (active - 1) * apiCapacity * this
+  // margin, i.e. we want proven headroom, not a razor's edge. Fixed at 0.7.
+  apiScaleDownMargin: Number(process.env.API_SCALE_DOWN_MARGIN ?? 0.7),
   // AI incident explainer via OpenRouter (OpenAI-compatible). Model is
   // overridable; verify the exact slug at https://openrouter.ai/models.
   openrouterKey: process.env.OPENROUTER_API_KEY ?? "",
