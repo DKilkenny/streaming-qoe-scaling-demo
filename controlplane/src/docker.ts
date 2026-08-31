@@ -78,12 +78,12 @@ export async function activeWorkers(): Promise<number> {
 
 /** Running containers still inside their cold-start window — provisioned but not yet consuming. */
 export async function workersWarming(): Promise<number> {
-  if (!dockerAvailable) return 0;
+  if (!dockerAvailable) return -1;
   try {
     return (await inspectWorkers()).filter((s) => s.running && !isPastColdStart(s.startedAt))
       .length;
   } catch {
-    return 0;
+    return -1;
   }
 }
 
@@ -109,31 +109,32 @@ let dynCounter = 0;
 
 /** Create and start one worker container, cloned from a live reference. Returns its id, or undefined on failure. */
 async function createWorker(): Promise<string | undefined> {
-  const ref = await referenceContainer();
-  if (!ref) {
-    // eslint-disable-next-line no-console
-    console.error("[docker] cannot create worker: no reference container found");
-    return undefined;
-  }
-  const networkName = Object.keys(ref.NetworkSettings.Networks ?? {})[0];
-  if (!networkName) {
-    // eslint-disable-next-line no-console
-    console.error("[docker] cannot create worker: reference container has no network");
-    return undefined;
-  }
-
-  dynCounter += 1;
-  const name = `${config.composeProject}-${config.workerService}-dyn-${Date.now()}-${dynCounter}`;
-  const labels: Record<string, string> = { ...(ref.Config.Labels ?? {}) };
-  // Carry the two labels workerContainers() filters on so this container is
-  // discovered like any other worker, with a container-number that won't
-  // collide with compose's own numbering.
-  labels["com.docker.compose.project"] = config.composeProject;
-  labels["com.docker.compose.service"] = config.workerService;
-  labels["com.docker.compose.container-number"] = String(1000 + dynCounter);
-
+  let container: Docker.Container | undefined;
   try {
-    const container = await docker.createContainer({
+    const ref = await referenceContainer();
+    if (!ref) {
+      // eslint-disable-next-line no-console
+      console.error("[docker] cannot create worker: no reference container found");
+      return undefined;
+    }
+    const networkName = Object.keys(ref.NetworkSettings.Networks ?? {})[0];
+    if (!networkName) {
+      // eslint-disable-next-line no-console
+      console.error("[docker] cannot create worker: reference container has no network");
+      return undefined;
+    }
+
+    dynCounter += 1;
+    const name = `${config.composeProject}-${config.workerService}-dyn-${Date.now()}-${dynCounter}`;
+    const labels: Record<string, string> = { ...(ref.Config.Labels ?? {}) };
+    // Carry the two labels workerContainers() filters on so this container is
+    // discovered like any other worker, with a container-number that won't
+    // collide with compose's own numbering.
+    labels["com.docker.compose.project"] = config.composeProject;
+    labels["com.docker.compose.service"] = config.workerService;
+    labels["com.docker.compose.container-number"] = String(1000 + dynCounter);
+
+    container = await docker.createContainer({
       name,
       Image: ref.Config.Image,
       Env: ref.Config.Env,
@@ -156,6 +157,16 @@ async function createWorker(): Promise<string | undefined> {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[docker] createWorker failed:", (err as Error).message);
+    // The container may have been created but never started (or started but
+    // this branch was reached some other way) — don't leave a dangling
+    // container behind: it would sit outside the running set forever (never
+    // cleaned up by scale-down, which only inspects running containers) and
+    // could later get picked as the clone reference by `referenceContainer()`
+    // despite an incomplete/broken network config, cascading into every
+    // future scale-up failing.
+    if (container) {
+      await container.remove({ force: true }).catch(() => {});
+    }
     return undefined;
   }
 }
