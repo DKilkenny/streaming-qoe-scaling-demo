@@ -10,7 +10,7 @@
   <header class="topbar">
     <div>
       <h1>Streaming Load Console</h1>
-      <p class="sub">Drive the discovery API, break it, watch it heal. Concept prototype &mdash; synthetic data.</p>
+      <p class="sub">Drive playback traffic, survive a premiere spike, watch it heal. Concept prototype &mdash; synthetic data.</p>
     </div>
     <nav class="links">
       <a id="grafana-link" href="https://localhost" target="_blank" rel="noopener">Grafana ↗</a>
@@ -20,10 +20,11 @@
   </header>
 
   <section class="tiles">
-    <div class="tile"><span class="label">Requests / sec</span><span class="value" id="t-rps">–</span></div>
-    <div class="tile"><span class="label">p99 latency</span><span class="value" id="t-p99">–</span></div>
-    <div class="tile"><span class="label">Cache hit</span><span class="value" id="t-cache">–</span></div>
-    <div class="tile"><span class="label">Queue backlog</span><span class="value" id="t-backlog">–</span></div>
+    <div class="tile"><span class="label">VST p95 (SLO &lt;100ms)</span><span class="value" id="t-vst">–</span></div>
+    <div class="tile"><span class="label">Concurrent streams</span><span class="value" id="t-concurrent">–</span></div>
+    <div class="tile"><span class="label">Rebuffer ratio</span><span class="value" id="t-rebuffer">–</span></div>
+    <div class="tile"><span class="label">Playback errors</span><span class="value" id="t-errors">–</span></div>
+    <div class="tile"><span class="label">Beacon backlog</span><span class="value" id="t-backlog">–</span></div>
     <div class="tile"><span class="label">Active workers</span><span class="value" id="t-workers">–</span></div>
   </section>
 
@@ -35,9 +36,9 @@
         <output id="rps-out">0 rps</output>
       </div>
       <div class="btn-row">
-        <button data-preset="normal">Normal</button>
-        <button data-preset="spike">Spike</button>
-        <button data-preset="storm" class="warn">Event storm</button>
+        <button data-preset="eveningPeak">Evening peak</button>
+        <button data-preset="trailerDrop">Trailer drop</button>
+        <button data-preset="episodePremiere" class="warn">Episode premiere</button>
         <button data-preset="stop" class="ghost">Stop</button>
       </div>
 
@@ -63,9 +64,9 @@
     </section>
 
     <section class="panel charts">
-      <div class="chart"><h3>Requests / sec</h3><canvas id="c-rps" height="90"></canvas></div>
-      <div class="chart"><h3>p99 latency (ms)</h3><canvas id="c-p99" height="90"></canvas></div>
-      <div class="chart"><h3>Queue backlog</h3><canvas id="c-backlog" height="90"></canvas></div>
+      <div class="chart"><h3>Concurrent streams</h3><canvas id="c-rps" height="90"></canvas></div>
+      <div class="chart"><h3>VST p95 (ms)</h3><canvas id="c-p99" height="90"></canvas></div>
+      <div class="chart"><h3>Beacon backlog</h3><canvas id="c-backlog" height="90"></canvas></div>
       <div class="chart"><h3>Active workers</h3><canvas id="c-workers" height="90"></canvas></div>
     </section>
 

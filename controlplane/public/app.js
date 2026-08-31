@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const MAXPTS = 90;
-const series = { rps: [], p99: [], backlog: [], workers: [] };
+const series = { concurrent: [], vst: [], backlog: [], workers: [] };
 
 // ---- dependency-free sparkline ----
 function drawSpark(canvas, data, color) {
@@ -59,19 +59,20 @@ async function poll() {
   try { s = await (await fetch("/api/status")).json(); } catch { return; }
   const m = s.metrics || {};
 
-  $("t-rps").textContent = fmt(m.rps);
-  $("t-p99").textContent = m.p99_ms == null ? "–" : m.p99_ms + " ms";
-  $("t-cache").textContent = m.cacheHitRate == null ? "–" : m.cacheHitRate + "%";
+  $("t-vst").textContent = m.vstP95_ms == null ? "–" : m.vstP95_ms + " ms";
+  $("t-concurrent").textContent = m.concurrentStreams == null ? "–" : m.concurrentStreams.toLocaleString();
+  $("t-rebuffer").textContent = m.rebufferRatio == null ? "–" : m.rebufferRatio + "%";
+  $("t-errors").textContent = m.playbackErrorRate == null ? "–" : m.playbackErrorRate + "%";
   $("t-backlog").textContent = m.backlog == null ? "–" : m.backlog.toLocaleString();
   $("t-workers").textContent = s.workers < 0 ? "n/a" : s.workers;
   $("w-count").textContent = s.workers < 0 ? "–" : s.workers;
 
-  push("rps", m.rps || 0);
-  push("p99", m.p99_ms || 0);
+  push("concurrent", m.concurrentStreams || 0);
+  push("vst", m.vstP95_ms || 0);
   push("backlog", m.backlog || 0);
   push("workers", s.workers < 0 ? 0 : s.workers);
-  drawSpark($("c-rps"), series.rps, "#5b8cff");
-  drawSpark($("c-p99"), series.p99, "#f5b445");
+  drawSpark($("c-rps"), series.concurrent, "#5b8cff");
+  drawSpark($("c-p99"), series.vst, "#f5b445");
   drawSpark($("c-backlog"), series.backlog, "#f2555a");
   drawSpark($("c-workers"), series.workers, "#34d399");
 
