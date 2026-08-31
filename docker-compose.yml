@@ -57,6 +57,12 @@ services:
       RABBITMQ_URL: amqp://streaming:streaming@rabbitmq:5672
       CACHE_TTL_SECONDS: "30"
       ROLE: api
+      # Simulated per-instance entitlement-concurrency cap (see api/src/config.ts):
+      # ~one instance saturates around PLAYBACK_MAX_INFLIGHT / (PLAYBACK_COST_MS/1000)
+      # playback-starts/s. Applies to every api replica, compose or dynamically
+      # provisioned, since they inherit this env.
+      PLAYBACK_COST_MS: "10"
+      PLAYBACK_MAX_INFLIGHT: "20"
       OTEL_ENABLED: "${OTEL_ENABLED:-true}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318}"
       OTEL_TRACES_SAMPLER: "parentbased_traceidratio"

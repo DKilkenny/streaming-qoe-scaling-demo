@@ -1,6 +1,6 @@
 import { config } from "./config";
 
-type Mode = "mixed" | "events" | "premiere";
+type Mode = "mixed" | "events" | "premiere" | "surge";
 
 let targetRps = 0;
 let mode: Mode = "mixed";
@@ -71,11 +71,34 @@ async function viewerSession(titleId: string) {
   }
 }
 
+// Thundering herd: a high, synchronized rate of POST /playback/start on the
+// premiere title. Fire-and-forget on the beacon path — this scenario is about
+// stressing the read path (playback/start + the per-instance entitlement
+// concurrency cap), not the QoE beacon pipeline.
+async function playbackStartOnly(titleId: string) {
+  try {
+    const res = await fetch(`${config.apiBase}/playback/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ titleId }),
+    });
+    if (!res.ok) { errors++; return; }
+    sent++;
+  } catch {
+    errors++;
+  }
+}
+
 async function oneRequest() {
   if (inflight >= MAX_INFLIGHT) return;
   inflight++;
   try {
     const roll = Math.random();
+    if (mode === "surge") {
+      const id = titleIds[0] ?? pickId();
+      if (id) await playbackStartOnly(id);
+      return;
+    }
     if (mode === "premiere") {
       const id = titleIds[0] ?? pickId();
       if (id) await viewerSession(id);

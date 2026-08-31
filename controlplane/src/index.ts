@@ -38,7 +38,7 @@ setInterval(async () => {
   if (n >= 0) activeWorkersGauge.set(n);
 }, 3_000);
 
-const PRESETS: Record<string, { rps: number; mode: "mixed" | "events" | "premiere" }> = {
+const PRESETS: Record<string, { rps: number; mode: "mixed" | "events" | "premiere" | "surge" }> = {
   eveningPeak: { rps: 800, mode: "mixed" },
   trailerDrop: { rps: 1500, mode: "mixed" },
   // Episode premiere: a synchronized surge of viewers opening sessions on one
@@ -48,6 +48,12 @@ const PRESETS: Record<string, { rps: number; mode: "mixed" | "events" | "premier
   // 1 worker (~580/s) but drains with headroom once the pool reaches max
   // (~2900/s), all while staying visibly the most intense preset.
   episodePremiere: { rps: 700, mode: "premiere" },
+  // Read-path thundering herd: a synchronized surge of playback-STARTS (not
+  // beacons) on the premiere title. One API instance's simulated entitlement
+  // concurrency cap saturates around ~2000/s (PLAYBACK_MAX_INFLIGHT=20 /
+  // PLAYBACK_COST_MS=10ms), so 4000 rps overwhelms 1 instance (VST climbs
+  // hard) and forces scale-out of the api pool to hold VST down.
+  playbackSurge: { rps: 4000, mode: "surge" },
 };
 
 async function main() {

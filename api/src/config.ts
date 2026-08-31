@@ -19,4 +19,9 @@ export const config = {
   // Simulated provisioning/init time: a newly started worker waits this long
   // before opening its consumer, modeling an ECS/Fargate task cold start.
   workerColdStartMs: Number(process.env.WORKER_COLDSTART_MS ?? 0),
+  // Simulated per-instance entitlement/license cost + concurrency cap, so one
+  // API instance saturates at an achievable RPS and VST climbs past it (async
+  // only — no CPU busy-loop). A labeled stand-in for a real entitlement path.
+  playbackCostMs: Number(process.env.PLAYBACK_COST_MS ?? 0),
+  playbackMaxInflight: Number(process.env.PLAYBACK_MAX_INFLIGHT ?? 0),
 };
