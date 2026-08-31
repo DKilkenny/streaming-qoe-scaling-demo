@@ -19,14 +19,60 @@
     </nav>
   </header>
 
+  <section class="panel framing" id="framing">
+    <div class="framing-head">
+      <h2>What is this?</h2>
+      <button id="framing-toggle" class="ghost small" type="button" aria-expanded="true">Hide explanation ▴</button>
+    </div>
+    <div class="framing-body">
+      <p>This is a small streaming backend with two decoupled paths: a <strong>read path</strong> that starts playback sessions and serves the catalog, and a <strong>write path</strong> that ingests QoE beacons (rebuffers, errors, completions) into a queue drained by a pool of workers.</p>
+      <p>Because the paths are decoupled, playback-start time (VST) stays fast even when the write pipeline is under heavy load &mdash; that separation is the point of the architecture, and what this demo is built to show.</p>
+      <p>The autoscaler watches utilization and backlog on the write path and adds or removes workers; a freshly provisioned worker takes ~12s to &ldquo;warm up&rdquo; before it helps.</p>
+      <p><strong>Honesty note:</strong> VST, backlog, utilization, and worker counts are measured live from the running stack. The viewer traffic and each worker&rsquo;s cold-start delay are simulated &mdash; they model the shape of a real premiere surge, not literal AWS provisioning times.</p>
+    </div>
+  </section>
+
   <section class="tiles">
-    <div class="tile"><span class="label">VST p95 (SLO &lt;100ms)</span><span class="value" id="t-vst">–</span></div>
-    <div class="tile"><span class="label">Concurrent streams</span><span class="value" id="t-concurrent">–</span></div>
-    <div class="tile"><span class="label">Rebuffer ratio</span><span class="value" id="t-rebuffer">–</span></div>
-    <div class="tile"><span class="label">Playback errors</span><span class="value" id="t-errors">–</span></div>
-    <div class="tile"><span class="label">Beacon backlog</span><span class="value" id="t-backlog">–</span></div>
-    <div class="tile"><span class="label">Active workers</span><span class="value" id="t-workers">–</span></div>
-    <div class="tile"><span class="label">Utilization</span><span class="value" id="t-util">–</span></div>
+    <div class="tile">
+      <span class="label" title="Time to authorize a playback session, 95th percentile. Measured live from playback/start calls. Stays fast because it's on the read path, independent of the write/beacon pipeline. SLO < 100ms.">VST p95 (SLO &lt;100ms)</span>
+      <span class="value" id="t-vst">–</span>
+      <span class="hint">Read-path latency, measured live. Decoupled from the write pipeline.</span>
+    </div>
+    <div class="tile">
+      <span class="label" title="Number of playback sessions currently live, tracked server-side in real time.">Concurrent streams</span>
+      <span class="value" id="t-concurrent">–</span>
+      <span class="hint">Live sessions being tracked right now.</span>
+    </div>
+    <div class="tile">
+      <span class="label" title="Percentage of sessions reporting a rebuffer event, aggregated from real QoE beacons sent by simulated viewers.">Rebuffer ratio</span>
+      <span class="value" id="t-rebuffer">–</span>
+      <span class="hint">Share of sessions that stalled. From client beacons.</span>
+    </div>
+    <div class="tile">
+      <span class="label" title="Percentage of sessions reporting a playback error, aggregated from real QoE beacons.">Playback errors</span>
+      <span class="value" id="t-errors">–</span>
+      <span class="hint">Share of sessions that errored out. From client beacons.</span>
+    </div>
+    <div class="tile">
+      <span class="label" title="Number of QoE beacon events queued and waiting on workers. Builds when the publish rate exceeds worker capacity.">Beacon backlog</span>
+      <span class="value" id="t-backlog">–</span>
+      <span class="hint">Queued beacons waiting on workers.</span>
+    </div>
+    <div class="tile">
+      <span class="label" title="Worker containers currently processing the beacon queue. &quot;+N warming&quot; means N more are provisioned but still in their ~12s simulated cold-start.">Active workers</span>
+      <span class="value-row"><span class="value" id="t-workers">–</span><span class="badge" id="t-workers-badge"></span></span>
+      <span class="hint">Processing the queue now. &ldquo;+N warming&rdquo; are cold-starting.</span>
+    </div>
+    <div class="tile">
+      <span class="label" title="Beacon publish rate divided by measured per-worker throughput capacity. The signal the proactive strategy scales on, before the backlog builds.">Utilization</span>
+      <span class="value" id="t-util">–</span>
+      <span class="hint">Measured publish rate vs. measured per-worker capacity.</span>
+    </div>
+  </section>
+
+  <section class="panel note" id="note">
+    <span class="note-label">What to watch</span>
+    <span id="note-text">Pick a load preset or a scaling strategy on the left to see what to watch for here.</span>
   </section>
 
   <div class="grid">

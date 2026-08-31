@@ -35,10 +35,7 @@ function drawSpark(canvas, data, color) {
 }
 
 function setActive(btn, active) {
-  btn.style.background = active ? "var(--accent)" : "";
-  btn.style.borderColor = active ? "var(--accent)" : "";
-  btn.style.color = active ? "#06122e" : "";
-  btn.style.fontWeight = active ? "600" : "";
+  btn.classList.toggle("active", active);
 }
 
 function push(key, v) {
@@ -59,6 +56,42 @@ let autoscalerLocked = false;
 let strategyLocked = false;
 let prewarmLocked = false;
 
+// ---- framing panel: collapsible, remembered per-browser ----
+const FRAMING_KEY = "console.framingCollapsed";
+function getFramingCollapsed() {
+  try { return localStorage.getItem(FRAMING_KEY) === "1"; } catch { return false; }
+}
+function setFramingCollapsed(v) {
+  try { localStorage.setItem(FRAMING_KEY, v ? "1" : "0"); } catch { /* ignore */ }
+}
+function applyFramingState(collapsed) {
+  $("framing").classList.toggle("collapsed", collapsed);
+  $("framing-toggle").textContent = collapsed ? "Show explanation ▾" : "Hide explanation ▴";
+  $("framing-toggle").setAttribute("aria-expanded", String(!collapsed));
+}
+applyFramingState(getFramingCollapsed());
+$("framing-toggle").addEventListener("click", () => {
+  const next = !$("framing").classList.contains("collapsed");
+  applyFramingState(next);
+  setFramingCollapsed(next);
+});
+
+// ---- "what to watch" note: updated when a preset or strategy is picked ----
+function setNote(text) { $("note-text").textContent = text; }
+
+const PRESET_NOTES = {
+  eveningPeak: "Simulating a modest, steady evening viewership bump: mixed browsing, search, and playback. Watch: metrics stay well within normal range and the autoscaler shouldn't need to do much.",
+  trailerDrop: "Simulating a trailer-drop spike: a burst of catalog and search traffic. Watch: read-path load (discover/search) rises while playback stays a smaller share of it.",
+  episodePremiere: "Simulating a synchronized viewer surge (an episode drop): everyone opens the same title at once. Watch: reads stay fast (VST) while the beacon backlog builds and the autoscaler provisions workers.",
+  stop: "Traffic stopped. Watch: the backlog drains, and once the surge has cleared, the autoscaler sheds workers back toward the floor.",
+};
+const STRATEGY_NOTES = {
+  reactive: "Reactive scales only after the backlog crosses a threshold (2,000 queued beacons). Simple, but new workers arrive ~12s late relative to the surge, so the backlog spikes higher before it's tamed.",
+  proactive: "Proactive scales on utilization: it provisions the next worker at ~75% load, before the backlog builds. New workers still cold-start (~12s), so getting ahead matters.",
+};
+const PREWARM_NOTE_ON = "Capacity raised ahead of a known surge (premieres are scheduled). Watch the premiere barely move the backlog.";
+const PREWARM_NOTE_OFF = "Pre-warm floor cleared. Capacity will ride the scaling strategy above instead of a fixed floor.";
+
 async function poll() {
   let s;
   try { s = await (await fetch("/api/status")).json(); } catch { return; }
@@ -69,8 +102,8 @@ async function poll() {
   $("t-rebuffer").textContent = m.rebufferRatio == null ? "–" : m.rebufferRatio + "%";
   $("t-errors").textContent = m.playbackErrorRate == null ? "–" : m.playbackErrorRate + "%";
   $("t-backlog").textContent = m.backlog == null ? "–" : m.backlog.toLocaleString();
-  $("t-workers").textContent =
-    s.workers < 0 ? "n/a" : s.workers + (s.workersWarming ? ` (+${s.workersWarming} warming)` : "");
+  $("t-workers").textContent = s.workers < 0 ? "n/a" : String(s.workers);
+  $("t-workers-badge").textContent = s.workersWarming ? `+${s.workersWarming} warming` : "";
   $("w-count").textContent = s.workers < 0 ? "–" : s.workers;
   $("t-util").textContent = s.utilization == null ? "–" : s.utilization + "%";
 
@@ -100,7 +133,12 @@ async function poll() {
   (s.events || []).slice().reverse().forEach((e) => {
     const li = document.createElement("li");
     const t = new Date(e.ts).toLocaleTimeString();
-    li.innerHTML = `${t} <span class="k ${e.kind}">${e.kind}</span> ${e.detail}`;
+    // e.kind can carry a qualifier, e.g. "scale-up (proactive)"; color by the
+    // base word so the CSS class stays a single clean token, but show the
+    // full kind text.
+    const baseKind = e.kind.split(" ")[0];
+    const detail = e.detail.charAt(0).toUpperCase() + e.detail.slice(1) + (/[.!?]$/.test(e.detail) ? "" : ".");
+    li.innerHTML = `<span class="t">${t}</span><span class="k ${baseKind}">${e.kind}</span><span class="d">${detail}</span>`;
     feed.appendChild(li);
   });
 }
@@ -109,7 +147,11 @@ async function poll() {
 $("rps").addEventListener("input", (e) => { $("rps-out").textContent = e.target.value + " rps"; });
 $("rps").addEventListener("change", (e) => post("/api/load", { rps: Number(e.target.value), mode: "mixed" }));
 document.querySelectorAll("[data-preset]").forEach((b) =>
-  b.addEventListener("click", () => post("/api/preset", { name: b.dataset.preset }))
+  b.addEventListener("click", () => {
+    const note = PRESET_NOTES[b.dataset.preset];
+    if (note) setNote(note);
+    post("/api/preset", { name: b.dataset.preset });
+  })
 );
 $("chaos").addEventListener("click", () => post("/api/chaos/worker-outage"));
 $("scale-max").addEventListener("click", () => post("/api/scale", { workers: 99 }));
@@ -128,17 +170,25 @@ document.querySelectorAll("[data-strategy]").forEach((b) =>
   b.addEventListener("click", async () => {
     strategyLocked = true;
     document.querySelectorAll("[data-strategy]").forEach((x) => setActive(x, x === b));
+    const note = STRATEGY_NOTES[b.dataset.strategy];
+    if (note) setNote(note);
     await post("/api/strategy", { strategy: b.dataset.strategy });
     setTimeout(() => (strategyLocked = false), 1500);
   })
 );
 $("prewarm").addEventListener("click", async () => {
   prewarmLocked = true;
+  setActive($("prewarm"), true);
+  $("prewarm").textContent = "Pre-warmed (4)";
+  setNote(PREWARM_NOTE_ON);
   await post("/api/prewarm", { workers: 4 });
   setTimeout(() => (prewarmLocked = false), 1500);
 });
 $("prewarm-clear").addEventListener("click", async () => {
   prewarmLocked = true;
+  setActive($("prewarm"), false);
+  $("prewarm").textContent = "Pre-warm for premiere";
+  setNote(PREWARM_NOTE_OFF);
   await post("/api/prewarm", { workers: 0 });
   setTimeout(() => (prewarmLocked = false), 1500);
 });
