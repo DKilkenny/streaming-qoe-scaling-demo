@@ -528,19 +528,34 @@ async function runTourB() {
   const backlog0 = latestStatus && latestStatus.metrics && latestStatus.metrics.backlog != null ? latestStatus.metrics.backlog.toLocaleString() : "rising";
   logNarration(`The event queue is backing up with no one to drain it (backlog ${backlog0}) &mdash; but watch playback latency: dead flat. Decoupled paths.`);
 
-  await waitForCondition((s) => s && s.workers > 0 && s.metrics && s.metrics.backlog != null && s.metrics.backlog < 500, 30000, myGen, 1500);
+  // Recovery has two distinct moments, and Tour A taught us to narrate them
+  // separately and honestly: the worker tier coming BACK (fast — new workers
+  // spin up in ~12s) is not the backlog being DRAINED (which can take a while
+  // when the outage let the queue balloon on a small box). Wait for capacity
+  // first — that moment is real and quick.
+  await waitForCondition((s) => s && s.workers > 0, 30000, myGen, 1500);
   if (myGen !== tourGeneration) return;
   const w = latestStatus && latestStatus.workers != null ? latestStatus.workers : "several";
-  logNarration(`Capacity comes back (workers ${w}) and drains the backlog. (Cold-start is compressed to ~12s in this demo &mdash; a real Fargate task takes ~60-90s.)`);
+  logNarration(`Capacity comes back (workers ${w}) and starts chewing through the backlog. (Cold-start is compressed to ~12s in this demo &mdash; a real Fargate task takes ~60-90s.)`);
 
-  await sleep(4000);
+  await sleep(2000);
   if (myGen !== tourGeneration) return;
   await post("/api/preset", { name: "stop" });
-  logNarration("Recovered. Playback never noticed.");
+  logNarration("Playback never noticed &mdash; VST stayed flat through the whole outage. Decoupled paths.");
 
-  await sleep(5000);
+  // Only claim "back to idle" if the backlog actually cleared. On a small box
+  // the queue the outage ballooned can take a while to drain, so narrate
+  // honestly either way instead of asserting idle while the Beacon Backlog
+  // tile still shows a big number. waitForCondition returns false on a genuine
+  // timeout (true on an already-passing check or a tour-invalidation bail).
+  const drained = await waitForCondition((s) => s && s.metrics && s.metrics.backlog != null && s.metrics.backlog < 500, 60000, myGen, 1500);
   if (myGen !== tourGeneration) return;
-  logNarration("Tour complete &mdash; back to idle. Try &ldquo;The premiere rush&rdquo; next, or explore the Advanced tab.");
+  if (drained) {
+    logNarration("Backlog fully drained &mdash; back to idle. Try &ldquo;The premiere rush&rdquo; next, or explore the Advanced tab.");
+  } else {
+    const backlogNow = latestStatus && latestStatus.metrics && latestStatus.metrics.backlog != null ? latestStatus.metrics.backlog.toLocaleString() : "still elevated";
+    logNarration(`Backlog draining (${backlogNow} and falling) &mdash; the worker tier is catching up while playback stays green. Try &ldquo;The premiere rush&rdquo; next, or explore the Advanced tab.`);
+  }
   finishTour();
 }
 
