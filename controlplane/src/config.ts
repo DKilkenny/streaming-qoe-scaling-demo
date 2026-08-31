@@ -31,13 +31,20 @@ export const config = {
   // of magnitude below a genuine playbackSurge herd's VST (peaks ~1900ms on
   // 1 instance) — confirmed while verifying the two autoscalers' separation.
   vstScaleUpMs: Number(process.env.VST_SCALE_UP_MS ?? 80),
-  vstScaleDownMs: Number(process.env.VST_SCALE_DOWN_MS ?? 20),
+  // Raised from 20 -> 60: under sustained comfortable load VST sits around
+  // ~24-48ms depending on rps, so a 20ms gate essentially never opens except
+  // at zero read traffic — it never let the converge-down headroom logic
+  // (below) actually act while real, lower demand was still present. 60ms
+  // sits above that comfortable steady-state band but below vstScaleUpMs
+  // (80ms), so the gate can open at normal load without also bordering the
+  // scale-up trigger (which would risk flapping right up against it).
+  vstScaleDownMs: Number(process.env.VST_SCALE_DOWN_MS ?? 60),
   // Estimated sustainable playback-start throughput per API instance
   // (derived from the saturation model: api/src/config.ts
   // PLAYBACK_MAX_INFLIGHT / PLAYBACK_COST_MS). Used by the read-tier
   // converge-down logic below to figure out how many instances current
   // demand actually needs, instead of just watching VST recover.
-  apiCapacity: Number(process.env.API_CAPACITY ?? 2000),
+  apiCapacity: Number(process.env.API_CAPACITY ?? 1500),
   // Safety margin applied to apiCapacity when deciding to shed an instance:
   // only shed if read RPS stays under (active - 1) * apiCapacity * this
   // margin, i.e. we want proven headroom, not a razor's edge. Fixed at 0.7.
