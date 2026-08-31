@@ -97,6 +97,76 @@ no `/etc/hosts` edits needed. Certs live in `caddy/certs/` and are gitignored.
   docker compose up -d --scale api=4 --no-recreate
   ```
 
+## Intelligent scaling
+
+The autoscaler doesn't just add worker *replicas* to an existing pool — the
+control plane **provisions worker containers on demand** via the Docker API
+(`controlplane/src/docker.ts`), the same pattern a Fargate control plane uses
+to call `RunTask`/`UpdateService`. In Phase 2 that call swaps to the AWS SDK;
+the control-plane logic (desired count in, containers/tasks out) doesn't
+change. This also makes the demo robust in a way a compose-scaled pool isn't:
+run a bare `docker compose up -d --build` mid-demo (which recreates and
+renames whatever container compose thinks is the `worker` service, collapsing
+its tracked replica count back to 1) and the control plane keeps working —
+it queries Docker directly for containers matching its own labels, so it
+still scales the pool up to `maxWorkers` on the next premiere. No warm-pool
+fragility to explain away.
+
+**The cold-start is a labeled simulation**, not a real Fargate cold start —
+`WORKER_COLDSTART_MS` (12s) models the *shape* of provisioning delay (real
+Fargate is more like 30–90s; the demo compresses it to a watchable timescale).
+It's called out as simulated everywhere it surfaces: the console's "warming"
+readout, the AI explainer's narration, and the activity feed. What's real is
+what it implies: a freshly created container is not capacity yet. Utilization
+(`measured beacon publish rate / measured per-worker capacity`) and the
+backlog are both live numbers from the running stack — only the delay between
+"decided to scale" and "capacity delivered" is simulated, and that delay is
+exactly what makes *when* you decide to scale matter.
+
+That's the reason for three scaling strategies, selectable from the console:
+
+- **Reactive** — scale up once the backlog crosses a threshold. Simple, but
+  during the ~12s a new worker is warming, the backlog keeps growing.
+- **Proactive** — scale up once utilization crosses 75%, *before* the backlog
+  has built. Gets a worker's 12s of lead time back.
+- **Pre-warm** — hold extra capacity ready ahead of a known event (a
+  scheduled premiere), so there's no cold-start lead time to lose at all.
+
+Run the same `Episode premiere` scenario under each and the difference is the
+demo's core claim, measured end-to-end against the live stack (not asserted):
+
+| Strategy | Peak beacon backlog | VST p95 |
+|---|---|---|
+| Reactive | ~25,000 | 9.8–20.7ms |
+| Proactive | ~6,600 (**~74% lower**) | 9.9–17.7ms |
+| Pre-warm(4) | ~70 (barely builds) | 9.8–22.5ms |
+
+All three hold **VST p95 well under the 100ms SLO** throughout — the point of
+decoupling playback from the write pipeline (see above) holds regardless of
+which scaling strategy is fighting the backlog. Concurrent streams reached
+~15,000–15,400 in every run; the load generator logged zero HTTP errors
+across the full verification session.
+
+Two more things worth watching in the console:
+
+- **Cold-start is directly visible.** Scale the pool up (manually, or via the
+  autoscaler) and the "warming" count holds steady for ~12s before those
+  workers flip to "active" and start draining backlog — a clean, isolated
+  demonstration of the delay the strategies above are all racing against.
+- **Scale-down is flap-free and worker-outage recovery still works.** When
+  load drops, the pool steps down one worker at a time with no oscillation
+  back up, and containers are actually removed (not just idled). Simulating a
+  worker outage mid-premiere (`Simulate worker outage`) drops the pool to
+  zero, lets the backlog spike, and the autoscaler recovers it once workers
+  come back — VST stays flat throughout, since the outage only ever touches
+  the write path.
+
+The console (`docs/console.png`) is meant to explain itself to a viewer who's
+never seen it before: a framing panel spells out what's being shown and why,
+every tile has a one-line explanation of what it measures and where the
+number comes from, and the "what to watch" note updates with the preset or
+strategy you've picked so there's always a concrete thing to look for.
+
 ## Observability
 
 Metrics are always on (Prometheus + Grafana). Distributed tracing is
