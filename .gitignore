@@ -6,3 +6,7 @@ load/results/
 .DS_Store
 .gstack/
 caddy/certs/
+
+# VM-local deploy files (created on the server; may contain the basic-auth hash)
+caddy.env
+docker-compose.override.yml
