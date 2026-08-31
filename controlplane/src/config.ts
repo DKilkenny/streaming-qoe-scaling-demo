@@ -10,6 +10,10 @@ export const config = {
   // Autoscaler thresholds (queue backlog).
   scaleUpBacklog: Number(process.env.SCALE_UP_BACKLOG ?? 2000),
   scaleDownBacklog: Number(process.env.SCALE_DOWN_BACKLOG ?? 200),
+  // Don't shed workers while a surge is still incoming. Only scale down once the
+  // beacon publish rate has dropped below this, so the worker count holds flat
+  // during sustained load instead of flapping when the queue momentarily drains.
+  scaleDownPublishRate: Number(process.env.SCALE_DOWN_PUBLISH_RATE ?? 500),
   // AI incident explainer via OpenRouter (OpenAI-compatible). Model is
   // overridable; verify the exact slug at https://openrouter.ai/models.
   openrouterKey: process.env.OPENROUTER_API_KEY ?? "",

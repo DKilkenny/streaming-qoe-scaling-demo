@@ -36,12 +36,19 @@ async function tick() {
       "scale-up",
       `backlog ${snap.backlog} > ${config.scaleUpBacklog}, workers ${active} -> ${next}`
     );
-  } else if (snap.backlog < config.scaleDownBacklog && active > config.minWorkers) {
+  } else if (
+    snap.backlog < config.scaleDownBacklog &&
+    (snap.eventsPublished ?? 0) < config.scaleDownPublishRate &&
+    active > config.minWorkers
+  ) {
+    // Backlog is low AND the surge has subsided (publish rate dropped): safe to
+    // shed a worker. Under sustained load the publish-rate gate keeps us from
+    // flapping — a near-empty queue at high publish rate is equilibrium, not idle.
     const next = await setDesiredWorkers(active - 1);
     lastScale = now;
     logEvent(
       "scale-down",
-      `backlog ${snap.backlog} < ${config.scaleDownBacklog}, workers ${active} -> ${next}`
+      `backlog ${snap.backlog} < ${config.scaleDownBacklog} & publish ${snap.eventsPublished ?? 0}/s < ${config.scaleDownPublishRate}, workers ${active} -> ${next}`
     );
   }
 }

@@ -156,6 +156,7 @@ services:
       MAX_WORKERS: "5"
       SCALE_UP_BACKLOG: "2000"
       SCALE_DOWN_BACKLOG: "200"
+      SCALE_DOWN_PUBLISH_RATE: "500"
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       OPENROUTER_MODEL: "${OPENROUTER_MODEL:-google/gemini-3.1-flash-lite}"
     ports:
