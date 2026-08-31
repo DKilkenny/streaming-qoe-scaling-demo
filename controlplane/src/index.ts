@@ -4,13 +4,15 @@ import fastifyStatic from "@fastify/static";
 import client from "prom-client";
 import { config } from "./config";
 import { startLoad, stopLoad, loadState } from "./load";
-import { metricsSnapshot } from "./metrics";
+import { metricsSnapshot, readRps } from "./metrics";
 import {
   initPool,
   setDesiredWorkers,
+  setDesiredApiInstances,
   injectOutage,
   activeWorkers,
   workersWarming,
+  activeApiInstances,
   poolSize,
   isDockerAvailable,
 } from "./docker";
@@ -22,9 +24,11 @@ import {
   setPrewarm,
   getPrewarm,
 } from "./autoscaler";
+import { setApiAutoscaler, apiAutoscalerEnabled } from "./apiscaler";
 import { explainIncident } from "./explain";
 import { logEvent, recentEvents } from "./state";
-import "./autoscaler"; // start the control loop
+import "./autoscaler"; // start the worker control loop
+import "./apiscaler"; // start the api (read-tier) control loop
 
 // Expose active worker count to Prometheus so the dashboard can chart it.
 const registry = new client.Registry();
@@ -66,11 +70,13 @@ async function main() {
   });
 
   app.get("/api/status", async () => {
-    const [snap, workers, warming, size] = await Promise.all([
+    const [snap, workers, warming, size, apiInstances, rps] = await Promise.all([
       metricsSnapshot(),
       activeWorkers(),
       workersWarming(),
       poolSize(),
+      activeApiInstances(),
+      readRps(),
     ]);
     // Docker unavailable (-1): don't fabricate a utilization number, and
     // display warming as "n/a" (0) rather than a negative count.
@@ -90,6 +96,12 @@ async function main() {
       strategy: getStrategy(),
       prewarm: getPrewarm(),
       utilization,
+      // Read tier (api pool): separate from the worker pool above.
+      apiInstances,
+      minApi: config.minApi,
+      maxApi: config.maxApi,
+      apiAutoscaler: apiAutoscalerEnabled(),
+      readRps: rps,
       dockerAvailable: isDockerAvailable(),
       jaegerUrl: config.jaegerUiBase,
       events: recentEvents(15),
@@ -145,6 +157,26 @@ async function main() {
   app.post<{ Body: { enabled?: boolean } }>("/api/autoscaler", async (req) => {
     setAutoscaler(Boolean(req.body?.enabled));
     return { enabled: autoscalerEnabled() };
+  });
+
+  app.post<{ Body: { instances?: number } }>("/api/apiscale", async (req, reply) => {
+    const raw = Number(req.body?.instances);
+    if (!Number.isFinite(raw)) {
+      reply.code(400);
+      return { error: "instances must be a finite number" };
+    }
+    // Manual scaling is an override: turn the api-autoscaler off so it
+    // doesn't immediately undo the operator's choice.
+    if (apiAutoscalerEnabled()) setApiAutoscaler(false);
+    const desired = Math.min(config.maxApi, Math.max(config.minApi, Math.floor(raw)));
+    const active = await setDesiredApiInstances(desired);
+    logEvent("apiscale", `manual scale -> ${active} api instances (api-autoscaler off)`);
+    return { active };
+  });
+
+  app.post<{ Body: { enabled?: boolean } }>("/api/apiscaler", async (req) => {
+    setApiAutoscaler(Boolean(req.body?.enabled));
+    return { enabled: apiAutoscalerEnabled() };
   });
 
   app.post<{ Body: { strategy?: string } }>("/api/strategy", async (req, reply) => {

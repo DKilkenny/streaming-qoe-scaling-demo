@@ -23,6 +23,20 @@ export const config = {
   workerColdStartMs: Number(process.env.WORKER_COLDSTART_MS ?? 12000),
   // Measured steady-state per-worker beacon throughput, for the utilization signal.
   workerCapacity: Number(process.env.WORKER_CAPACITY ?? 550),
+  // API-tier autoscaler thresholds (read signal: VST, distinct from the
+  // worker autoscaler's backlog signal). vstScaleUpMs sits well above the
+  // ~45ms transient VST spike observed from episodePremiere's viewer-session
+  // dispatch (which fires each 100ms tick's requests synchronously, briefly
+  // inflating P95 even when the api tier isn't really saturated) and orders
+  // of magnitude below a genuine playbackSurge herd's VST (peaks ~1900ms on
+  // 1 instance) — confirmed while verifying the two autoscalers' separation.
+  vstScaleUpMs: Number(process.env.VST_SCALE_UP_MS ?? 80),
+  vstScaleDownMs: Number(process.env.VST_SCALE_DOWN_MS ?? 20),
+  // Don't shed api instances while the herd is still incoming, even if VST
+  // momentarily dips — only scale down once playback-start RPS has also
+  // dropped below this. Mirrors scaleDownPublishRate's role for the worker
+  // scaler, gated on the read-path's own signal instead of beacon publishes.
+  scaleDownReadRps: Number(process.env.SCALE_DOWN_READ_RPS ?? 100),
   // AI incident explainer via OpenRouter (OpenAI-compatible). Model is
   // overridable; verify the exact slug at https://openrouter.ai/models.
   openrouterKey: process.env.OPENROUTER_API_KEY ?? "",

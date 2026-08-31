@@ -180,6 +180,9 @@ services:
       SCALE_DOWN_PUBLISH_RATE: "500"
       WORKER_COLDSTART_MS: "12000"
       WORKER_CAPACITY: "550"
+      VST_SCALE_UP_MS: "80"
+      VST_SCALE_DOWN_MS: "20"
+      SCALE_DOWN_READ_RPS: "100"
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       OPENROUTER_MODEL: "${OPENROUTER_MODEL:-google/gemini-3.1-flash-lite}"
     ports:

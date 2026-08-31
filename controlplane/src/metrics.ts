@@ -1,6 +1,6 @@
 import { config } from "./config";
 
-async function q(expr: string): Promise<number | null> {
+export async function q(expr: string): Promise<number | null> {
   try {
     const url = `${config.prometheusBase}/api/v1/query?query=${encodeURIComponent(expr)}`;
     const res = await fetch(url);
@@ -49,3 +49,12 @@ export async function metricsSnapshot() {
 }
 
 export type Snapshot = Awaited<ReturnType<typeof metricsSnapshot>>;
+
+// Read-tier load signal for the API autoscaler: playback-start rate, distinct
+// from the worker autoscaler's beacon-publish signal. Queried separately
+// (rather than folded into metricsSnapshot) so /api/status and the api
+// scaler loop can each sample it on their own cadence.
+export async function readRps(): Promise<number | null> {
+  const rps = await q('sum(rate(http_request_duration_seconds_count{route="/playback/start"}[15s]))');
+  return rps == null ? null : Math.round(rps);
+}
