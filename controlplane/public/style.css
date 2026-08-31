@@ -133,10 +133,16 @@ button.active {
 #tour-stop-btn:hover { border-color: var(--danger); background: #2a1113; }
 .tour-caption-box {
   margin-top: 18px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
-  padding: 14px 16px; min-height: 96px;
+  padding: 14px 16px;
 }
 .tour-caption-label { display: block; color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 600; margin-bottom: 8px; }
-#tour-caption { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--text); }
+/* append-only narration log — same list/overflow pattern as #feed, so lines
+   accumulate (newest at the bottom) instead of replacing each other. */
+.tour-log { list-style: none; margin: 0; padding: 0; min-height: 72px; max-height: 240px; overflow-y: auto; }
+.tour-log li { font-size: 13px; line-height: 1.55; padding: 6px 0; border-bottom: 1px solid var(--line); color: var(--text); }
+.tour-log li:last-child { border-bottom: none; }
+.tour-log li .t { font-family: var(--mono); color: var(--muted); font-size: 11px; margin-right: 8px; white-space: nowrap; }
+.tour-log li.placeholder { color: var(--muted); border-bottom: none; }
 
 /* ---- sparkline hover tooltip ---- */
 .spark-tooltip {

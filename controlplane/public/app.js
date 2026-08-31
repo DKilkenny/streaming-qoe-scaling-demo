@@ -348,14 +348,24 @@ $("tab-advanced").addEventListener("click", () => { stopTour(); applyTab("advanc
 
 // ---- Guided tours ----
 // Each tour drives the same API endpoints a human would click, on a timed
-// sequence, narrating through #tour-caption. `tourGeneration` invalidates any
-// in-flight tour when a new one starts or Stop is pressed, so stale timers
-// and awaits become no-ops instead of racing the new state.
+// sequence, narrating into #tour-log — an append-only scrollable log (styled
+// like the Activity feed) so a slow reader never loses an earlier line when
+// the tour advances. `tourGeneration` invalidates any in-flight tour when a
+// new one starts or Stop is pressed, so stale timers and awaits become
+// no-ops instead of racing the new state.
 let tourGeneration = 0;
 let activeTour = null; // 'A' | 'B' | null
 let tourTimers = [];
 
-function setCaption(html) { $("tour-caption").innerHTML = html; }
+function clearTourLog() { $("tour-log").innerHTML = ""; }
+function logNarration(html) {
+  const log = $("tour-log");
+  const li = document.createElement("li");
+  const t = new Date().toLocaleTimeString();
+  li.innerHTML = `<span class="t">${t}</span>${html}`;
+  log.appendChild(li);
+  log.scrollTop = log.scrollHeight; // auto-scroll to the newest line
+}
 
 function sleep(ms) {
   return new Promise((resolve) => {
@@ -403,7 +413,7 @@ async function stopTour() {
   tourGeneration++; // invalidates every pending await in the running tour
   clearTourTimers();
   await post("/api/preset", { name: "stop" });
-  setCaption("Tour stopped.");
+  logNarration("Tour stopped.");
   activeTour = null;
   updateTourUI();
 }
@@ -412,6 +422,7 @@ async function runTourA() {
   if (activeTour) return;
   const myGen = ++tourGeneration;
   activeTour = "A";
+  clearTourLog();
   updateTourUI();
 
   if (myGen !== tourGeneration) return;
@@ -419,7 +430,7 @@ async function runTourA() {
   if (myGen !== tourGeneration) return;
   await post("/api/strategy", { strategy: "proactive" });
   if (myGen !== tourGeneration) return;
-  setCaption("It&rsquo;s Tuesday night &mdash; a new episode just dropped. Everyone hits play at once.");
+  logNarration("It&rsquo;s Tuesday night &mdash; a new episode just dropped. Everyone hits play at once.");
 
   await sleep(2500);
   if (myGen !== tourGeneration) return;
@@ -427,26 +438,26 @@ async function runTourA() {
 
   await sleep(5000);
   if (myGen !== tourGeneration) return;
-  setCaption("One server is overwhelmed &mdash; playback-start time (VST) is climbing.");
+  logNarration("One server is overwhelmed &mdash; playback-start time (VST) is climbing.");
 
   await waitForCondition((s) => s && s.apiInstances > 1, 15000, myGen);
   if (myGen !== tourGeneration) return;
   const apiN = latestStatus && latestStatus.apiInstances != null ? latestStatus.apiInstances : 4;
-  setCaption(`The read tier is provisioning servers behind the load balancer to absorb it &mdash; 1 &rarr; ${apiN}. (Cold-start is compressed to ~12s here &mdash; a real Fargate cold-start is ~60-90s, which is why you pre-warm.)`);
+  logNarration(`The read tier is provisioning servers behind the load balancer to absorb it &mdash; 1 &rarr; ${apiN}. (Cold-start is compressed to ~12s here &mdash; a real Fargate cold-start is ~60-90s, which is why you pre-warm.)`);
 
   await waitForCondition((s) => s && s.metrics && s.metrics.vstP95_ms != null && s.metrics.vstP95_ms < 100, 45000, myGen, 1500);
   if (myGen !== tourGeneration) return;
   const vst = latestStatus && latestStatus.metrics && latestStatus.metrics.vstP95_ms != null ? latestStatus.metrics.vstP95_ms : "<100";
-  setCaption(`Recovered &mdash; playback starts are fast again (VST ~${vst}ms) under a ~4,000/sec rush. And the analytics pipeline (workers) never even flinched &mdash; the two paths are decoupled.`);
+  logNarration(`Recovered &mdash; playback starts are fast again (VST ~${vst}ms) under a ~4,000/sec rush. And the analytics pipeline (workers) never even flinched &mdash; the two paths are decoupled.`);
 
   await sleep(4500);
   if (myGen !== tourGeneration) return;
   await post("/api/preset", { name: "stop" });
-  setCaption("The rush passes; the read tier scales back down as demand falls.");
+  logNarration("The rush passes; the read tier scales back down as demand falls.");
 
   await sleep(6000);
   if (myGen !== tourGeneration) return;
-  setCaption("Tour complete &mdash; back to idle. Try &ldquo;Survive a failure&rdquo; next, or explore the Advanced tab.");
+  logNarration("Tour complete &mdash; back to idle. Try &ldquo;Survive a failure&rdquo; next, or explore the Advanced tab.");
   finishTour();
 }
 
@@ -454,6 +465,7 @@ async function runTourB() {
   if (activeTour) return;
   const myGen = ++tourGeneration;
   activeTour = "B";
+  clearTourLog();
   updateTourUI();
 
   if (myGen !== tourGeneration) return;
@@ -461,11 +473,11 @@ async function runTourB() {
   if (myGen !== tourGeneration) return;
   await post("/api/preset", { name: "episodePremiere" });
   if (myGen !== tourGeneration) return;
-  setCaption("A premiere is running &mdash; analytics events flood in and the worker pool scales to keep up.");
+  logNarration("A premiere is running &mdash; analytics events flood in and the worker pool scales to keep up.");
 
   await sleep(12000);
   if (myGen !== tourGeneration) return;
-  setCaption("Now watch what happens when I kill the entire analytics tier.");
+  logNarration("Now watch what happens when I kill the entire analytics tier.");
 
   await sleep(1500);
   if (myGen !== tourGeneration) return;
@@ -474,21 +486,21 @@ async function runTourB() {
   await sleep(5000);
   if (myGen !== tourGeneration) return;
   const backlog0 = latestStatus && latestStatus.metrics && latestStatus.metrics.backlog != null ? latestStatus.metrics.backlog.toLocaleString() : "rising";
-  setCaption(`The event queue is backing up with no one to drain it (backlog ${backlog0}) &mdash; but watch playback latency: dead flat. Decoupled paths.`);
+  logNarration(`The event queue is backing up with no one to drain it (backlog ${backlog0}) &mdash; but watch playback latency: dead flat. Decoupled paths.`);
 
   await waitForCondition((s) => s && s.workers > 0 && s.metrics && s.metrics.backlog != null && s.metrics.backlog < 500, 30000, myGen, 1500);
   if (myGen !== tourGeneration) return;
   const w = latestStatus && latestStatus.workers != null ? latestStatus.workers : "several";
-  setCaption(`Capacity comes back (workers ${w}) and drains the backlog. (Cold-start is compressed to ~12s in this demo &mdash; a real Fargate task takes ~60-90s.)`);
+  logNarration(`Capacity comes back (workers ${w}) and drains the backlog. (Cold-start is compressed to ~12s in this demo &mdash; a real Fargate task takes ~60-90s.)`);
 
   await sleep(4000);
   if (myGen !== tourGeneration) return;
   await post("/api/preset", { name: "stop" });
-  setCaption("Recovered. Playback never noticed.");
+  logNarration("Recovered. Playback never noticed.");
 
   await sleep(5000);
   if (myGen !== tourGeneration) return;
-  setCaption("Tour complete &mdash; back to idle. Try &ldquo;The premiere rush&rdquo; next, or explore the Advanced tab.");
+  logNarration("Tour complete &mdash; back to idle. Try &ldquo;The premiere rush&rdquo; next, or explore the Advanced tab.");
   finishTour();
 }
 
