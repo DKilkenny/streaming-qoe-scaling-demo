@@ -26,6 +26,7 @@
     <div class="tile"><span class="label">Playback errors</span><span class="value" id="t-errors">–</span></div>
     <div class="tile"><span class="label">Beacon backlog</span><span class="value" id="t-backlog">–</span></div>
     <div class="tile"><span class="label">Active workers</span><span class="value" id="t-workers">–</span></div>
+    <div class="tile"><span class="label">Utilization</span><span class="value" id="t-util">–</span></div>
   </section>
 
   <div class="grid">
@@ -56,6 +57,16 @@
         <button id="w-down">−</button>
         <span id="w-count">–</span>
         <button id="w-up">+</button>
+      </div>
+
+      <h2>Scaling strategy</h2>
+      <div class="btn-row">
+        <button data-strategy="reactive">Reactive</button>
+        <button data-strategy="proactive">Proactive</button>
+      </div>
+      <div class="btn-row">
+        <button id="prewarm">Pre-warm for premiere</button>
+        <button id="prewarm-clear" class="ghost">Clear pre-warm</button>
       </div>
 
       <h2>AI incident explainer</h2>

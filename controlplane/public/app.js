@@ -34,6 +34,13 @@ function drawSpark(canvas, data, color) {
   ctx.beginPath(); ctx.arc(lx, ly, 2.5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
 }
 
+function setActive(btn, active) {
+  btn.style.background = active ? "var(--accent)" : "";
+  btn.style.borderColor = active ? "var(--accent)" : "";
+  btn.style.color = active ? "#06122e" : "";
+  btn.style.fontWeight = active ? "600" : "";
+}
+
 function push(key, v) {
   const arr = series[key];
   arr.push(Number.isFinite(v) ? v : 0);
@@ -49,6 +56,8 @@ async function post(path, body) {
 }
 
 let autoscalerLocked = false;
+let strategyLocked = false;
+let prewarmLocked = false;
 
 async function poll() {
   let s;
@@ -60,8 +69,10 @@ async function poll() {
   $("t-rebuffer").textContent = m.rebufferRatio == null ? "–" : m.rebufferRatio + "%";
   $("t-errors").textContent = m.playbackErrorRate == null ? "–" : m.playbackErrorRate + "%";
   $("t-backlog").textContent = m.backlog == null ? "–" : m.backlog.toLocaleString();
-  $("t-workers").textContent = s.workers < 0 ? "n/a" : s.workers;
+  $("t-workers").textContent =
+    s.workers < 0 ? "n/a" : s.workers + (s.workersWarming ? ` (+${s.workersWarming} warming)` : "");
   $("w-count").textContent = s.workers < 0 ? "–" : s.workers;
+  $("t-util").textContent = s.utilization == null ? "–" : s.utilization + "%";
 
   push("concurrent", m.concurrentStreams || 0);
   push("vst", m.vstP95_ms || 0);
@@ -74,6 +85,15 @@ async function poll() {
 
   if (!autoscalerLocked) $("autoscaler").checked = !!s.autoscaler;
   if (s.jaegerUrl) $("jaeger-link").href = s.jaegerUrl;
+
+  if (!strategyLocked) {
+    document.querySelectorAll("[data-strategy]").forEach((b) => setActive(b, b.dataset.strategy === s.strategy));
+  }
+  if (!prewarmLocked) {
+    const active = s.prewarm > 0;
+    setActive($("prewarm"), active);
+    $("prewarm").textContent = active ? `Pre-warmed (${s.prewarm})` : "Pre-warm for premiere";
+  }
 
   const feed = $("feed");
   feed.innerHTML = "";
@@ -103,6 +123,24 @@ $("autoscaler").addEventListener("change", async (e) => {
   autoscalerLocked = true;
   await post("/api/autoscaler", { enabled: e.target.checked });
   setTimeout(() => (autoscalerLocked = false), 1500);
+});
+document.querySelectorAll("[data-strategy]").forEach((b) =>
+  b.addEventListener("click", async () => {
+    strategyLocked = true;
+    document.querySelectorAll("[data-strategy]").forEach((x) => setActive(x, x === b));
+    await post("/api/strategy", { strategy: b.dataset.strategy });
+    setTimeout(() => (strategyLocked = false), 1500);
+  })
+);
+$("prewarm").addEventListener("click", async () => {
+  prewarmLocked = true;
+  await post("/api/prewarm", { workers: 4 });
+  setTimeout(() => (prewarmLocked = false), 1500);
+});
+$("prewarm-clear").addEventListener("click", async () => {
+  prewarmLocked = true;
+  await post("/api/prewarm", { workers: 0 });
+  setTimeout(() => (prewarmLocked = false), 1500);
 });
 $("explain").addEventListener("click", async () => {
   const out = $("explain-out");
