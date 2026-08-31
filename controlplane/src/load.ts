@@ -32,16 +32,13 @@ function pickId(): string | null {
   return titleIds[Math.floor(Math.random() * titleIds.length)];
 }
 
-// One simulated viewer: open a playback session (VST is measured server-side),
-// then emit a short run of QoE beacons — a play, a progress, an occasional
-// rebuffer, and a final complete. This is the "client SDK fleet" that
-// produces the QoE numbers the dashboard aggregates. Kept to ~3 beacons on
-// the happy path (play/progress/complete) to keep beacon-publish volume —
-// and the Redis session-tracking work each beacon does — proportional to
-// session count, so a session surge doesn't itself starve VST.
+// One simulated viewer. Opens a playback session (VST measured server-side),
+// then lives for a realistic short watch window: its QoE beacons are SCHEDULED
+// over time (not awaited back-to-back), so many sessions are concurrently
+// "live" in Redis at once and `concurrent_streams` reflects real overlap. The
+// dispatch loop is not blocked for the whole watch — only for the start+play —
+// so throughput (and thus beacon publish rate) is unchanged.
 async function viewerSession(titleId: string) {
-  if (inflight >= MAX_INFLIGHT) return;
-  inflight++;
   try {
     const res = await fetch(`${config.apiBase}/playback/start`, {
       method: "POST",
@@ -57,16 +54,20 @@ async function viewerSession(titleId: string) {
         body: JSON.stringify({ sessionId, titleId, type }),
       }).catch(() => { errors++; });
 
-    await beacon("play");
-    await beacon("progress");
-    if (Math.random() < 0.08) await beacon("rebuffer"); // ~8% see a rebuffer
-    if (Math.random() < 0.02) { await beacon("error"); return; } // ~2% error out
-    await beacon("complete");
+    // play now; the rest are scheduled across a ~5-30s watch so sessions overlap.
+    void beacon("play");
+    if (Math.random() < 0.08) {
+      setTimeout(() => void beacon("rebuffer"), 2_000 + Math.random() * 4_000); // ~8% rebuffer early
+    }
+    void setTimeout(() => void beacon("progress"), 5_000 + Math.random() * 7_000); // progress mid-watch
+    if (Math.random() < 0.02) {
+      setTimeout(() => void beacon("error"), 6_000 + Math.random() * 6_000); // ~2% error out mid-watch
+    } else {
+      setTimeout(() => void beacon("complete"), 14_000 + Math.random() * 16_000); // finish 14-30s in
+    }
     sent++;
   } catch {
     errors++;
-  } finally {
-    inflight--;
   }
 }
 
@@ -101,6 +102,7 @@ async function oneRequest() {
       // streams/rebuffer ratio stay populated outside the premiere preset too.
       const id = pickId();
       if (id) await viewerSession(id);
+      return; // viewerSession owns its own `sent` count; don't double-count here
     }
     sent++;
   } catch {
