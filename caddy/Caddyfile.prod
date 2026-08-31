@@ -1,0 +1,25 @@
+# Production Caddyfile for the live VM demo.
+# Serves ONLY the Load Console publicly, behind HTTP basic auth, with a real
+# Let's Encrypt cert. All other services (api, prometheus, grafana, jaeger,
+# rabbitmq, the LB) stay private on the internal Docker network.
+#
+# Usage on the VM: this file is mounted into the caddy container in place of the
+# dev Caddyfile (see DEPLOY.md). It is driven by three env vars:
+#   SITE_ADDRESS     e.g. 143-42-9-17.sslip.io   (your VM's dashed public IP + .sslip.io)
+#   BASIC_AUTH_USER  e.g. angel
+#   BASIC_AUTH_HASH  a bcrypt hash from:  docker run --rm caddy caddy hash-password --plaintext 'yourpassword'
+
+{$SITE_ADDRESS} {
+	# Real TLS: Caddy fetches a Let's Encrypt cert for the sslip.io domain
+	# automatically (needs ports 80 + 443 open and the domain resolving to this
+	# box, which sslip.io does for free).
+
+	basic_auth {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+
+	# The Console (control plane) is the whole demo surface: the guided tours,
+	# tiles, and /api/* all live here. The load generator, LB, and scaling run
+	# server-side, so nothing else needs to be exposed.
+	reverse_proxy controlplane:8080
+}
