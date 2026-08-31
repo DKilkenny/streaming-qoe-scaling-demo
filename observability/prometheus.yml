@@ -3,10 +3,16 @@ global:
   evaluation_interval: 2s
 
 scrape_configs:
+  # The api tier is a scaled pool behind the LB; Docker DNS returns an A
+  # record per replica (each dynamically-created container carries the "api"
+  # network alias), so DNS service discovery scrapes every replica.
   - job_name: api
     metrics_path: /metrics
-    static_configs:
-      - targets: ["api:3000"]
+    dns_sd_configs:
+      - names: ["api"]
+        type: A
+        port: 3000
+        refresh_interval: 5s
 
   # The worker is a scaled pool; Docker DNS returns an A record per replica,
   # so DNS service discovery scrapes every worker (paused ones just read down).

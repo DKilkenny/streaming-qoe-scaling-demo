@@ -1,12 +1,17 @@
 export const config = {
   port: Number(process.env.PORT ?? 8080),
-  apiBase: process.env.API_BASE ?? "http://api:3000",
+  // Points at the nginx LB (see lb/nginx.conf), which round-robins across
+  // whatever api replicas Docker DNS currently returns for the "api" alias.
+  apiBase: process.env.API_BASE ?? "http://lb",
   prometheusBase: process.env.PROMETHEUS_BASE ?? "http://prometheus:9090",
   jaegerUiBase: process.env.JAEGER_UI_BASE ?? "http://localhost:16686",
   composeProject: process.env.COMPOSE_PROJECT ?? "angel-streaming-demo",
   workerService: process.env.WORKER_SERVICE ?? "worker",
   minWorkers: Number(process.env.MIN_WORKERS ?? 1),
   maxWorkers: Number(process.env.MAX_WORKERS ?? 5),
+  // API-tier pool bounds (read path, behind the LB).
+  minApi: Number(process.env.MIN_API ?? 1),
+  maxApi: Number(process.env.MAX_API ?? 4),
   // Autoscaler thresholds (queue backlog).
   scaleUpBacklog: Number(process.env.SCALE_UP_BACKLOG ?? 2000),
   scaleDownBacklog: Number(process.env.SCALE_DOWN_BACKLOG ?? 200),

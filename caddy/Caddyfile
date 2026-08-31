@@ -9,10 +9,11 @@ https://localhost, https://grafana.localhost {
 	reverse_proxy grafana:3000
 }
 
-# Discovery API on https://api.localhost
+# Discovery API on https://api.localhost (through the LB, which round-robins
+# across api replicas)
 https://api.localhost {
 	tls /certs/local.pem /certs/local-key.pem
-	reverse_proxy api:3000
+	reverse_proxy lb:80
 }
 
 # Prometheus on https://prometheus.localhost
