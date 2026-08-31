@@ -34,9 +34,24 @@ export function apiAutoscalerEnabled() {
   return enabled;
 }
 
-async function tick() {
-  if (!enabled) return;
+// Serialize runs: a scale op's container create+start (plus the nginx upstream
+// reload) can outlast the 2s tick interval, and lastScale is only updated after
+// that await — so without this guard two overlapping runs read the same
+// pre-scale `active` and both provision, overshooting maxApi. Same fix as the
+// worker autoscaler. Node is single-threaded, so the boolean is race-free.
+let scaling = false;
 
+async function tick() {
+  if (!enabled || scaling) return;
+  scaling = true;
+  try {
+    await runScaleTick();
+  } finally {
+    scaling = false;
+  }
+}
+
+async function runScaleTick() {
   const [snap, active, rps] = await Promise.all([metricsSnapshot(), activeApiInstances(), readRps()]);
   if (active < 0) return;
   const rawVst = snap.vstP95_ms;

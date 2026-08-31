@@ -49,10 +49,30 @@ export function autoscalerEnabled() {
   return enabled;
 }
 
+// Guard against overlapping runs. A scale-up's container create+start takes
+// longer than the 2s tick interval, so without this the next interval fires
+// while this run is still awaiting setDesiredWorkers. Because lastScale is only
+// updated after that await, both runs read the same pre-scale `active` and both
+// provision toward the target, transiently overshooting maxWorkers (observed:
+// active_workers reading 7 with max 5 during outage recovery, before the next
+// tick scaled the overshoot back down). Node is single-threaded, so a boolean
+// with no await between the check and the set is race-free.
+let scaling = false;
+
 // Closed loop: watch utilization and the engagement backlog and add/remove
-// worker capacity.
+// worker capacity. Serialized by `scaling` so a slow scale-up never overlaps
+// the next tick and double-provisions.
 async function tick() {
-  if (!enabled) return;
+  if (!enabled || scaling) return;
+  scaling = true;
+  try {
+    await runScaleTick();
+  } finally {
+    scaling = false;
+  }
+}
+
+async function runScaleTick() {
   const now = Date.now();
   if (now - lastScale < COOLDOWN_MS) return;
 
