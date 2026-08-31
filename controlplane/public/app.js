@@ -340,8 +340,11 @@ function applyTab(tab) {
   $("tab-advanced").setAttribute("aria-selected", String(!basic));
 }
 applyTab(getStoredTab() === "advanced" ? "advanced" : "basic");
-$("tab-basic").addEventListener("click", () => { applyTab("basic"); setStoredTab("basic"); });
-$("tab-advanced").addEventListener("click", () => { applyTab("advanced"); setStoredTab("advanced"); });
+// Switching tabs mid-tour would strand the Stop control (it only lives in
+// #basic-view), so a tour is auto-stopped on any manual tab switch —
+// stopTour() is a no-op when no tour is running.
+$("tab-basic").addEventListener("click", () => { stopTour(); applyTab("basic"); setStoredTab("basic"); });
+$("tab-advanced").addEventListener("click", () => { stopTour(); applyTab("advanced"); setStoredTab("advanced"); });
 
 // ---- Guided tours ----
 // Each tour drives the same API endpoints a human would click, on a timed
@@ -391,6 +394,7 @@ function updateTourUI() {
 
 function finishTour() {
   activeTour = null;
+  clearTourTimers();
   updateTourUI();
 }
 
@@ -410,7 +414,9 @@ async function runTourA() {
   activeTour = "A";
   updateTourUI();
 
+  if (myGen !== tourGeneration) return;
   await post("/api/apiscaler", { enabled: true });
+  if (myGen !== tourGeneration) return;
   await post("/api/strategy", { strategy: "proactive" });
   if (myGen !== tourGeneration) return;
   setCaption("It&rsquo;s Tuesday night &mdash; a new episode just dropped. Everyone hits play at once.");
@@ -450,9 +456,11 @@ async function runTourB() {
   activeTour = "B";
   updateTourUI();
 
+  if (myGen !== tourGeneration) return;
   await post("/api/autoscaler", { enabled: true });
   if (myGen !== tourGeneration) return;
   await post("/api/preset", { name: "episodePremiere" });
+  if (myGen !== tourGeneration) return;
   setCaption("A premiere is running &mdash; analytics events flood in and the worker pool scales to keep up.");
 
   await sleep(12000);

@@ -118,7 +118,6 @@ button.active {
 }
 .tab-btn:hover { color: var(--text); border-color: transparent; }
 .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
-.tab-view.hidden { display: none; }
 
 /* ---- Basic view: guided tours ---- */
 .basic-intro { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0 0 16px; }
