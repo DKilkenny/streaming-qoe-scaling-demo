@@ -458,9 +458,20 @@ async function runTourA() {
   const workerN = latestStatus && latestStatus.workers != null ? latestStatus.workers : 5;
   logNarration(`The worker pool is provisioning too &mdash; 1 &rarr; ${workerN} to drain the backlog. Two independent systems, one premiere &mdash; neither fighting the other.`);
 
-  await waitForCondition((s) => s && s.metrics && s.metrics.backlog != null && s.metrics.backlog < 500, 30000, myGen, 1500);
+  // Backlog drain (from the worker-scale-up point above) takes ~40s
+  // observed, not ~30s — give it real margin, and only claim "drained" if
+  // it actually did: waitForCondition returns false on a genuine timeout
+  // (vs. true on either an already-passing check or a tour-invalidation
+  // bail), so narrate honestly either way instead of asserting "drained"
+  // unconditionally.
+  const drained = await waitForCondition((s) => s && s.metrics && s.metrics.backlog != null && s.metrics.backlog < 500, 60000, myGen, 1500);
   if (myGen !== tourGeneration) return;
-  logNarration("Backlog drained. Both tiers held their SLOs through the whole rush.");
+  if (drained) {
+    logNarration("Backlog drained. Both tiers held their SLOs through the whole rush.");
+  } else {
+    const backlogNow = latestStatus && latestStatus.metrics && latestStatus.metrics.backlog != null ? latestStatus.metrics.backlog.toLocaleString() : "still elevated";
+    logNarration(`Backlog draining (${backlogNow} and falling) &mdash; workers are catching up, and VST stayed green the whole time.`);
+  }
 
   await sleep(4500);
   if (myGen !== tourGeneration) return;

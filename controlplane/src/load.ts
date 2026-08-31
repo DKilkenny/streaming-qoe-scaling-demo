@@ -205,6 +205,11 @@ setInterval(() => {
   for (let i = 0; i < n; i++) void oneRequest();
   // Combined-premiere's write/worker-tier half: a fixed spawn rate, NOT
   // derived from `n`/targetRps above — see COMBINED_BEACON_SPAWNS_PER_TICK.
+  // Intentionally bypasses the inflight/MAX_INFLIGHT gate that oneRequest()
+  // uses above: this is a fixed, low, fire-and-forget rate (not driven by
+  // rps), so it can't runaway inflight the way an unbounded rps-scaled path
+  // could — the gate isn't needed here and skipping it keeps this spawn
+  // decoupled from the read tier's inflight pressure too.
   if (mode === "combined") {
     const id = titleIds[0] ?? pickId();
     if (id) for (let i = 0; i < COMBINED_BEACON_SPAWNS_PER_TICK; i++) void beaconOnlySession(id);
