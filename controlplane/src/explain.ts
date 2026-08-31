@@ -1,13 +1,21 @@
 import { config } from "./config";
 import { metricsSnapshot, type Snapshot } from "./metrics";
-import { activeWorkers, isDockerAvailable } from "./docker";
+import { activeWorkers, isDockerAvailable, workersWarming } from "./docker";
+import { getStrategy } from "./autoscaler";
 import { recentEvents } from "./state";
 
 // Deterministic reading of the metrics — always available, so the feature works
 // with no API key and is the honest fallback if the model call fails.
-function ruleBasedExplain(s: Snapshot, workers: number): string {
+function ruleBasedExplain(
+  s: Snapshot,
+  workers: number,
+  warming: number,
+  utilization: number | null,
+  strategy: "reactive" | "proactive"
+): string {
   const parts: string[] = [];
   const w = workers >= 0 ? `${workers} worker(s) active; ` : "";
+  const warmSecs = Math.round(config.workerColdStartMs / 1000);
 
   if (s.vstP95_ms != null && s.vstP95_ms > 100)
     parts.push(`Video Start Time is over SLO (p95 ${s.vstP95_ms}ms vs 100ms target) — the playback-start path needs cache warming or more read capacity.`);
@@ -20,6 +28,18 @@ function ruleBasedExplain(s: Snapshot, workers: number): string {
     parts.push(`A small beacon backlog is forming (${s.backlog}); ${w}the workers are roughly keeping pace.`);
   else
     parts.push(`The QoE beacon pipeline is healthy — the backlog is essentially empty and ${workers >= 0 ? `${workers} worker(s) are` : "the workers are"} keeping up.`);
+
+  // Scaling narration: only speak to utilization/warming when there's
+  // something to say — high utilization and/or workers still cold-starting.
+  if (warming > 0 && utilization != null && utilization > 75) {
+    parts.push(
+      `Utilization is ${utilization}%; the ${strategy} scaler is provisioning capacity — ${warming} worker(s) warming up (~${warmSecs}s simulated cold start).`
+    );
+  } else if (warming > 0) {
+    parts.push(`${warming} worker(s) are still warming up (~${warmSecs}s simulated cold start) before they start consuming.`);
+  } else if (utilization != null && utilization > 75) {
+    parts.push(`Utilization is ${utilization}%, above the 75% threshold — the ${strategy} scaler is provisioning additional capacity.`);
+  }
 
   if (s.concurrentStreams != null)
     parts.push(`${s.concurrentStreams.toLocaleString()} concurrent streams right now.`);
@@ -48,7 +68,8 @@ async function llmExplain(prompt: string): Promise<string | null> {
           {
             role: "system",
             content:
-              "You are an SRE watching a video streaming service. Explain in 2-4 plain-English sentences what the metrics show right now and what action, if any, would help. Ground every claim in the numbers; do not invent problems. Two separate concerns: (1) VIDEO START TIME (VST p95) is the playback-start path, kept fast by caching — its SLO is p95 < 100ms; only call it a problem if it exceeds 100ms. (2) The BEACON BACKLOG is the QoE telemetry write path; only say the pipeline is 'behind' if the backlog is large (say > 2000) or clearly growing, and note the autoscaler adds workers to drain it. Rebuffer ratio and playback error rate are viewer-experience signals aggregated from client beacons. If VST is under SLO and the backlog is low, state plainly that the service is healthy. Be concrete and calm. No preamble, no bullet points.",
+              "You are an SRE watching a video streaming service. Explain in 2-4 plain-English sentences what the metrics show right now and what action, if any, would help. Ground every claim in the numbers; do not invent problems. Two separate concerns: (1) VIDEO START TIME (VST p95) is the playback-start path, kept fast by caching — its SLO is p95 < 100ms; only call it a problem if it exceeds 100ms. (2) The BEACON BACKLOG is the QoE telemetry write path; only say the pipeline is 'behind' if the backlog is large (say > 2000) or clearly growing, and note the autoscaler adds workers to drain it. Rebuffer ratio and playback error rate are viewer-experience signals aggregated from client beacons. If VST is under SLO and the backlog is low, state plainly that the service is healthy. " +
+              "The autoscaler has two strategies: 'reactive' waits for the beacon backlog to build before adding workers; 'proactive' watches utilization (published beacons vs. current worker capacity) and provisions additional workers BEFORE the backlog builds, once utilization crosses ~75%. Newly provisioned workers cold-start for about 12 seconds — a SIMULATED provisioning delay standing in for a real container/task launch, not an actual infrastructure cold start — so there's a lead time between a scale-up decision and that capacity actually draining the queue; count warming workers as capacity in flight, not yet capacity delivered. An operator can also set a pre-warm floor to hold extra workers ready ahead of a known/scheduled surge, so scale-up happens before load even arrives. When utilization is high and/or workers are warming, explain the scaling decision in those terms — do not call the system 'struggling' on read latency (VST) alone; only flag VST if p95 exceeds 100ms. Be concrete and calm. No preamble, no bullet points.",
           },
           { role: "user", content: prompt },
         ],
@@ -78,7 +99,16 @@ export async function explainIncident(): Promise<{
   snapshot: Snapshot;
 }> {
   const snap = await metricsSnapshot();
-  const workers = isDockerAvailable() ? await activeWorkers() : -1;
+  const dockerUp = isDockerAvailable();
+  const workers = dockerUp ? await activeWorkers() : -1;
+  const warming = dockerUp ? await workersWarming() : -1;
+  const strategy = getStrategy();
+  // Mirror /api/status's utilization computation: null when workers is
+  // unknown (docker unavailable), so we never fabricate a number.
+  const utilization =
+    workers < 0
+      ? null
+      : Math.round((100 * (snap.eventsPublished ?? 0)) / Math.max(1, workers * config.workerCapacity));
   const events = recentEvents(12)
     .map((e) => `- ${new Date(e.ts).toISOString().slice(11, 19)} ${e.kind}: ${e.detail}`)
     .join("\n");
@@ -95,10 +125,17 @@ export async function explainIncident(): Promise<{
     `  cache hit rate: ${n(snap.cacheHitRate, "%")}\n` +
     `  beacon backlog: ${n(snap.backlog)}\n` +
     `  beacons published/s: ${n(snap.eventsPublished)}, processed/s: ${n(snap.eventsProcessed)}\n` +
-    `  active workers: ${workers < 0 ? "unknown" : workers}\n\n` +
+    `  active workers: ${workers < 0 ? "unknown" : workers}\n` +
+    `  workers warming (cold-starting, not yet consuming): ${warming < 0 ? "unknown" : warming}\n` +
+    `  utilization: ${n(utilization, "%")}\n` +
+    `  autoscaler strategy: ${strategy}\n\n` +
     `Recent events:\n${events || "(none)"}`;
 
   const ai = await llmExplain(prompt);
   if (ai) return { source: "ai", model: config.openrouterModel, text: ai, snapshot: snap };
-  return { source: "rule-based", text: ruleBasedExplain(snap, workers), snapshot: snap };
+  return {
+    source: "rule-based",
+    text: ruleBasedExplain(snap, workers, warming < 0 ? 0 : warming, utilization, strategy),
+    snapshot: snap,
+  };
 }
