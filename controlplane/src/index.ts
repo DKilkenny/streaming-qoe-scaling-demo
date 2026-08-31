@@ -36,7 +36,10 @@ const PRESETS: Record<string, { rps: number; mode: "mixed" | "events" | "premier
   // Episode premiere: a synchronized surge of viewers opening sessions on one
   // title. Outruns a single worker's beacon-processing capacity, so the queue
   // builds and the autoscaler scales up to drain it — while VST stays flat.
-  episodePremiere: { rps: 2500, mode: "premiere" },
+  // 700 sessions/s * ~3 beacons/session ~= 2100 beacons/s: builds a backlog at
+  // 1 worker (~580/s) but drains with headroom once the pool reaches max
+  // (~2900/s), all while staying visibly the most intense preset.
+  episodePremiere: { rps: 700, mode: "premiere" },
 };
 
 async function main() {

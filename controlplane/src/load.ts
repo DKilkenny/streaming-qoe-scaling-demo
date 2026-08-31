@@ -33,9 +33,12 @@ function pickId(): string | null {
 }
 
 // One simulated viewer: open a playback session (VST is measured server-side),
-// then emit a short run of QoE beacons — a play, a couple of progress beacons,
-// an occasional rebuffer, and a final complete. This is the "client SDK fleet"
-// that produces the QoE numbers the dashboard aggregates.
+// then emit a short run of QoE beacons — a play, a progress, an occasional
+// rebuffer, and a final complete. This is the "client SDK fleet" that
+// produces the QoE numbers the dashboard aggregates. Kept to ~3 beacons on
+// the happy path (play/progress/complete) to keep beacon-publish volume —
+// and the Redis session-tracking work each beacon does — proportional to
+// session count, so a session surge doesn't itself starve VST.
 async function viewerSession(titleId: string) {
   if (inflight >= MAX_INFLIGHT) return;
   inflight++;
@@ -58,7 +61,6 @@ async function viewerSession(titleId: string) {
     await beacon("progress");
     if (Math.random() < 0.08) await beacon("rebuffer"); // ~8% see a rebuffer
     if (Math.random() < 0.02) { await beacon("error"); return; } // ~2% error out
-    await beacon("progress");
     await beacon("complete");
     sent++;
   } catch {
