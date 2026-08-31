@@ -231,6 +231,15 @@ async function poll() {
   if (!autoscalerLocked) $("autoscaler").checked = !!s.autoscaler;
   if (!apiscalerLocked) $("apiscaler").checked = !!s.apiAutoscaler;
   if (s.jaegerUrl) $("jaeger-link").href = s.jaegerUrl;
+  if (typeof s.grafanaUrl === "string") {
+    const g = $("grafana-link");
+    if (s.grafanaUrl) {
+      g.href = s.grafanaUrl;
+      g.hidden = false;
+    } else {
+      g.hidden = true; // Grafana not exposed in this deployment
+    }
+  }
 
   if (!strategyLocked) {
     document.querySelectorAll("[data-strategy]").forEach((b) => setActive(b, b.dataset.strategy === s.strategy));

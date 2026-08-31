@@ -175,6 +175,10 @@ services:
       API_BASE: http://lb
       PROMETHEUS_BASE: http://prometheus:9090
       JAEGER_UI_BASE: "${JAEGER_UI_BASE:-https://jaeger.localhost}"
+      # Base for the Console's Grafana deep-link. Local dev: Grafana on
+      # https://localhost. Prod VM with Grafana exposed: set this in .env to the
+      # grafana sslip.io host. Set GRAFANA_BASE= (empty) to hide the link.
+      GRAFANA_BASE: "${GRAFANA_BASE-https://localhost}"
       COMPOSE_PROJECT: angel-streaming-demo
       WORKER_SERVICE: worker
       MIN_WORKERS: "1"

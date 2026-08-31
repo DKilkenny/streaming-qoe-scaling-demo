@@ -112,6 +112,12 @@ async function main() {
       readRps: rps,
       dockerAvailable: isDockerAvailable(),
       jaegerUrl: config.jaegerUiBase,
+      // Deep-link straight to the Streaming QoE dashboard (uid streaming-discovery)
+      // at a 5s refresh. Empty base => omit, so the Console can hide the link.
+      grafanaUrl: config.grafanaBase
+        ? config.grafanaBase.replace(/\/$/, "") +
+          "/d/streaming-discovery/streaming-qoe?orgId=1&refresh=5s"
+        : "",
       events: recentEvents(15),
     };
   });

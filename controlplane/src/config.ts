@@ -5,6 +5,10 @@ export const config = {
   apiBase: process.env.API_BASE ?? "http://lb",
   prometheusBase: process.env.PROMETHEUS_BASE ?? "http://prometheus:9090",
   jaegerUiBase: process.env.JAEGER_UI_BASE ?? "http://localhost:16686",
+  // Base URL for the Grafana link in the Console header. The dashboard path is
+  // appended in index.ts. Override per-deploy (e.g. an exposed sslip.io host);
+  // when Grafana isn't exposed publicly, set GRAFANA_BASE="" to hide the link.
+  grafanaBase: process.env.GRAFANA_BASE ?? "https://localhost",
   composeProject: process.env.COMPOSE_PROJECT ?? "angel-streaming-demo",
   workerService: process.env.WORKER_SERVICE ?? "worker",
   minWorkers: Number(process.env.MIN_WORKERS ?? 1),

@@ -1,0 +1,35 @@
+# Production Caddyfile that ALSO exposes Grafana (optional variant of
+# Caddyfile.prod). Serves the Load Console and the Grafana dashboards, each on
+# its own sslip.io host, both behind the same HTTP basic auth and real
+# Let's Encrypt certs. Everything else (api, prometheus, jaeger, rabbitmq, the
+# LB) stays private on the internal Docker network.
+#
+# Usage on the VM: mount this in place of the dev Caddyfile (see DEPLOY.md ->
+# "Expose Grafana"). Driven by these env vars (from caddy.env):
+#   SITE_ADDRESS          e.g. 157-230-196-166.sslip.io          (the Console)
+#   GRAFANA_SITE_ADDRESS  e.g. grafana.157-230-196-166.sslip.io  (the dashboards)
+#   BASIC_AUTH_USER       e.g. angel
+#   BASIC_AUTH_HASH       a bcrypt hash (see DEPLOY.md; escape $ as $$ in caddy.env)
+
+{$SITE_ADDRESS} {
+	# Real TLS via Let's Encrypt (needs ports 80 + 443 open and the domain
+	# resolving to this box, which sslip.io does for free).
+	basic_auth {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+
+	# The Console (control plane): guided tours, tiles, and /api/*.
+	reverse_proxy controlplane:8080
+}
+
+{$GRAFANA_SITE_ADDRESS} {
+	# Same basic-auth gate as the Console. Grafana itself runs with anonymous
+	# Viewer access (set in docker-compose.override.yml), so once past basic
+	# auth the dashboards render with no second Grafana login, and the admin
+	# login/edit surface stays behind the basic-auth wall.
+	basic_auth {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+
+	reverse_proxy grafana:3000
+}

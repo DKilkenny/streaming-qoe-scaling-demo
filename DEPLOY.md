@@ -108,9 +108,48 @@ You'll land on the **Basic** tab — hit **▶ The premiere rush**.
 
 ## 6. Hardening (already mostly done)
 - **Basic auth** is on (step 4) — the URL can spawn containers + drive load, so keep it behind auth.
-- Only the **Console** is exposed; api/prometheus/grafana/jaeger/rabbitmq stay on the internal network. (The Console's "Grafana ↗ / Traces ↗" header links are for local dev and won't resolve publicly — that's fine, the tours don't need them. If you want Grafana public too, add a second site block for `grafana-<dashed-ip>.sslip.io` → `grafana:3000`.)
+- Only the **Console** is exposed by default; api/prometheus/grafana/jaeger/rabbitmq stay on the internal network. The Console's "Traces ↗ / API ↗" header links are local-dev only and won't resolve publicly — that's fine, the tours don't need them. The **Grafana ↗** link auto-hides publicly unless you expose Grafana (next bullet).
 - The **Basic tab is the default**, so a visitor gets the one-button guided tour, not the raw load dial.
 - Optional: to peek at Grafana/etc. yourself without exposing them, SSH-tunnel: `ssh -L 3001:localhost:3001 user@<ip>` then `http://localhost:3001`.
+
+## 6b. Expose Grafana too (optional)
+Publishes the Grafana dashboards on their own sslip.io host, behind the **same**
+basic auth, and points the Console's **Grafana ↗** link straight at the Streaming
+QoE board. Grafana runs with anonymous **Viewer** access so there's no second
+Grafana login (the admin/edit surface stays behind the basic-auth wall). Uses the
+same ports 80/443 — no firewall change.
+
+Your Grafana host is `grafana.` + your Console host, e.g.
+`grafana.157-230-196-166.sslip.io` (sslip.io resolves it to your IP for free).
+
+1. Add `GRAFANA_SITE_ADDRESS` to `caddy.env` (no `$`, so no escaping needed):
+   ```bash
+   echo 'GRAFANA_SITE_ADDRESS=grafana.157-230-196-166.sslip.io' >> caddy.env
+   ```
+2. Point the Console link at it — add to `.env`:
+   ```bash
+   echo 'GRAFANA_BASE=https://grafana.157-230-196-166.sslip.io' >> .env
+   ```
+3. Use the Grafana-enabled Caddyfile instead of the Console-only one:
+   ```bash
+   cp caddy/Caddyfile.prod-grafana caddy/Caddyfile
+   ```
+4. Add a Grafana block to `docker-compose.override.yml` — anonymous Viewer + the
+   correct public root URL (merge these into the `services:` you already have):
+   ```yaml
+   services:
+     grafana:
+       environment:
+         GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+         GF_SERVER_ROOT_URL: "https://grafana.157-230-196-166.sslip.io/"
+         GF_SERVER_DOMAIN: "grafana.157-230-196-166.sslip.io"
+   ```
+5. Rebuild the control plane (picks up `GRAFANA_BASE`) and restart Caddy + Grafana:
+   ```bash
+   docker compose up -d --build controlplane caddy grafana
+   ```
+First cert for the new host issues in ~10–30s. The **Grafana ↗** link now opens
+`https://grafana.157-230-196-166.sslip.io/d/streaming-discovery/streaming-qoe?orgId=1&refresh=5s`.
 
 ## 7. Tear down when done
 ```bash
