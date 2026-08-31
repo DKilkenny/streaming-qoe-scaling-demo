@@ -86,8 +86,8 @@ const PRESET_NOTES = {
   stop: "Traffic stopped. Watch: the backlog drains, and once the surge has cleared, the autoscaler sheds workers back toward the floor.",
 };
 const STRATEGY_NOTES = {
-  reactive: "Reactive scales only after the backlog crosses a threshold (2,000 queued beacons). Simple, but new workers arrive ~12s late relative to the surge, so the backlog spikes higher before it's tamed.",
-  proactive: "Proactive scales on utilization: it provisions the next worker at ~75% load, before the backlog builds. New workers still cold-start (~12s), so getting ahead matters.",
+  reactive: "Reactive scales only after the backlog crosses a threshold (2,000 queued beacons). Simple, but new workers arrive ~12s late (simulated) relative to the surge, so the backlog spikes higher before it's tamed.",
+  proactive: "Proactive scales on utilization: it provisions the next worker at ~75% load, before the backlog builds. New workers still cold-start (~12s, simulated), so getting ahead matters.",
 };
 const PREWARM_NOTE_ON = "Capacity raised ahead of a known surge (premieres are scheduled). Watch the premiere barely move the backlog.";
 const PREWARM_NOTE_OFF = "Pre-warm floor cleared. Capacity will ride the scaling strategy above instead of a fixed floor.";

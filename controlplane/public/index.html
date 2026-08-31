@@ -64,9 +64,9 @@
       <span class="hint">Processing the queue now. &ldquo;+N warming&rdquo; are cold-starting.</span>
     </div>
     <div class="tile">
-      <span class="label" title="Beacon publish rate divided by measured per-worker throughput capacity. The signal the proactive strategy scales on, before the backlog builds.">Utilization</span>
+      <span class="label" title="Beacon publish rate divided by measured per-worker throughput capacity. The signal the proactive strategy scales on, before the backlog builds. Can exceed 100% while workers are still warming — that's the gap the scaler races to close.">Utilization</span>
       <span class="value" id="t-util">–</span>
-      <span class="hint">Measured publish rate vs. measured per-worker capacity.</span>
+      <span class="hint">Incoming beacon rate vs current worker capacity. Can exceed 100% while workers are still warming — that's the gap the scaler races to close.</span>
     </div>
   </section>
 

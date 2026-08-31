@@ -139,13 +139,13 @@ demo's core claim, measured end-to-end against the live stack (not asserted):
 |---|---|---|
 | Reactive | ~25,000 | 9.8–20.7ms |
 | Proactive | ~6,600 (**~74% lower**) | 9.9–17.7ms |
-| Pre-warm(4) | ~70 (barely builds) | 9.8–22.5ms |
+| Pre-warm (4) | ~70 (barely builds) | 9.8–22.5ms |
 
 All three hold **VST p95 well under the 100ms SLO** throughout — the point of
 decoupling playback from the write pipeline (see above) holds regardless of
-which scaling strategy is fighting the backlog. Concurrent streams reached
-~15,000–15,400 in every run; the load generator logged zero HTTP errors
-across the full verification session.
+which scaling strategy is fighting the backlog. Concurrent streams held
+around ~15,000 (the load generator's session target) throughout; the load
+generator logged zero HTTP errors across the full verification session.
 
 Two more things worth watching in the console:
 

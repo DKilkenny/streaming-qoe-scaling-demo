@@ -186,6 +186,31 @@ async function removeWorker(id: string): Promise<void> {
   }
 }
 
+/**
+ * Remove stopped worker containers left behind by `injectOutage()` (whose
+ * recovery path creates fresh containers via `setDesiredWorkers` rather than
+ * restarting the stopped ones), so they don't accumulate in `docker ps -a`
+ * across repeated outage cycles.
+ *
+ * Always leaves at least one container behind — running or stopped — so
+ * `referenceContainer()` never runs out of a spec to clone: if any worker is
+ * currently running, that's a safe reference and every stopped container can
+ * go; otherwise the single oldest stopped container is kept as the fallback
+ * reference and only the rest are removed.
+ */
+async function pruneStoppedWorkers(): Promise<void> {
+  const states = await inspectWorkers();
+  const stopped = states.filter((s) => !s.running);
+  if (stopped.length === 0) return;
+
+  const hasRunning = states.some((s) => s.running);
+  const toRemove = hasRunning
+    ? stopped
+    : [...stopped].sort((a, b) => a.created - b.created).slice(1);
+
+  await Promise.all(toRemove.map((w) => removeWorker(w.id)));
+}
+
 /** Drive the pool to `desired` running workers by creating/removing containers. Returns the resulting active count. */
 export async function setDesiredWorkers(desired: number): Promise<number> {
   const target = Math.max(config.minWorkers, Math.min(config.maxWorkers, desired));
@@ -202,6 +227,17 @@ export async function setDesiredWorkers(desired: number): Promise<number> {
     const toRemove = [...running].sort((a, b) => b.created - a.created).slice(0, extras);
     await Promise.all(toRemove.map((w) => removeWorker(w.id)));
   }
+
+  // Bounded cleanup: outage recovery creates new containers rather than
+  // restarting stopped ones, so without this, stopped workers would pile up
+  // across repeated outage cycles. Runs on every call so cleanup happens as
+  // soon as the pool has at least one running worker again; failures here
+  // must never break the scale operation itself.
+  await pruneStoppedWorkers().catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error("[docker] pruneStoppedWorkers failed:", (err as Error).message);
+  });
+
   return activeWorkers();
 }
 
