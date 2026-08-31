@@ -151,6 +151,32 @@ Your Grafana host is `grafana.` + your Console host, e.g.
 First cert for the new host issues in ~10–30s. The **Grafana ↗** link now opens
 `https://grafana.157-230-196-166.sslip.io/d/streaming-discovery/streaming-qoe?orgId=1&refresh=5s`.
 
+## 6c. Skip Jaeger on the VM (lighter box)
+The tours tell their story through Grafana (aggregate metrics), not Jaeger
+(per-request traces), and the Jaeger all-in-one container competes for the same
+CPUs as the load generator. To drop it on a prod VM — keeping the OpenTelemetry
+instrumentation in the code, just not running the collector here:
+
+1. In `.env`, turn off span export and hide the Console's Traces link:
+   ```bash
+   echo 'OTEL_ENABLED=false' >> .env
+   echo 'JAEGER_UI_BASE='     >> .env
+   ```
+2. Keep Jaeger out of `docker compose up` by profiling it out — add to
+   `docker-compose.override.yml`:
+   ```yaml
+   services:
+     jaeger:
+       profiles: ["tracing"]   # excluded unless you run: docker compose --profile tracing up
+   ```
+3. Remove the running container and recreate the app with export off:
+   ```bash
+   docker compose rm -sf jaeger
+   docker compose up -d --build controlplane api worker
+   ```
+The Console's **Traces ↗** link disappears (no dead link), and no spans are
+generated. Local dev is unaffected — Jaeger still runs there by default.
+
 ## 7. Tear down when done
 ```bash
 make down        # stop containers, keep data

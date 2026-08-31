@@ -230,7 +230,15 @@ async function poll() {
 
   if (!autoscalerLocked) $("autoscaler").checked = !!s.autoscaler;
   if (!apiscalerLocked) $("apiscaler").checked = !!s.apiAutoscaler;
-  if (s.jaegerUrl) $("jaeger-link").href = s.jaegerUrl;
+  if (typeof s.jaegerUrl === "string") {
+    const j = $("jaeger-link");
+    if (s.jaegerUrl) {
+      j.href = s.jaegerUrl;
+      j.hidden = false;
+    } else {
+      j.hidden = true; // Jaeger not exposed in this deployment
+    }
+  }
   if (typeof s.grafanaUrl === "string") {
     const g = $("grafana-link");
     if (s.grafanaUrl) {

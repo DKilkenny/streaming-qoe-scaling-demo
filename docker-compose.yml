@@ -174,7 +174,9 @@ services:
       PORT: "8080"
       API_BASE: http://lb
       PROMETHEUS_BASE: http://prometheus:9090
-      JAEGER_UI_BASE: "${JAEGER_UI_BASE:-https://jaeger.localhost}"
+      # `-` (not `:-`) so an explicit empty value is honored and hides the
+      # Console's Traces link — e.g. a prod VM that doesn't run Jaeger.
+      JAEGER_UI_BASE: "${JAEGER_UI_BASE-https://jaeger.localhost}"
       # Base for the Console's Grafana deep-link. Local dev: Grafana on
       # https://localhost. Prod VM with Grafana exposed: set this in .env to the
       # grafana sslip.io host. Set GRAFANA_BASE= (empty) to hide the link.
@@ -227,7 +229,6 @@ services:
       - lb
       - prometheus
       - controlplane
-      - jaeger
 
 volumes:
   pgdata:
