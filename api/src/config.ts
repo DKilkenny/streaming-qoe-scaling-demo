@@ -15,5 +15,5 @@ export const config = {
   workerEventMs: Number(process.env.WORKER_EVENT_MS ?? 4),
   otelEnabled: (process.env.OTEL_ENABLED ?? "false") === "true",
   otelEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "",
-  engagementQueue: "engagement",
+  qoeQueue: "qoe",
 };

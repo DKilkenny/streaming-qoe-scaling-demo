@@ -6,7 +6,7 @@ import { getChannel } from "./lib/rabbit";
 import { catalogRoutes } from "./routes/catalog";
 import { discoverRoutes } from "./routes/discover";
 import { searchRoutes } from "./routes/search";
-import { eventRoutes } from "./routes/events";
+import { beaconRoutes } from "./routes/beacon";
 
 export async function startServer() {
   const app = Fastify({ logger: { level: "warn" } });
@@ -30,7 +30,7 @@ export async function startServer() {
   await app.register(catalogRoutes);
   await app.register(discoverRoutes);
   await app.register(searchRoutes);
-  await app.register(eventRoutes);
+  await app.register(beaconRoutes);
 
   await waitForDb();
   await getChannel(); // establish the publish channel up front

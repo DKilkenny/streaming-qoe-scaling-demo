@@ -24,8 +24,8 @@ export async function metricsSnapshot() {
       q("sum(rate(http_request_duration_seconds_count[15s]))"),
       q("sum(rabbitmq_queue_messages_ready)"),
       q("sum(rabbitmq_queue_messages_unacked)"),
-      q("sum(rate(engagement_events_published_total[15s]))"),
-      q("sum(rate(engagement_events_processed_total[15s]))"),
+      q("sum(rate(qoe_beacons_published_total[15s]))"),
+      q("sum(rate(qoe_beacons_processed_total[15s]))"),
     ]);
 
   return {

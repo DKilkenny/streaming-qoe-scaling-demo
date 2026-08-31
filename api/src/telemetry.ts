@@ -19,19 +19,31 @@ export const cacheEvents = new client.Counter({
   registers: [registry],
 });
 
-export const eventsPublished = new client.Counter({
-  name: "engagement_events_published_total",
-  help: "Engagement events published to the queue",
+export const beaconsPublished = new client.Counter({
+  name: "qoe_beacons_published_total",
+  help: "QoE beacons published to the queue",
   labelNames: ["type"],
   registers: [registry],
 });
 
-export const eventsProcessed = new client.Counter({
-  name: "engagement_events_processed_total",
-  help: "Engagement events consumed by the worker",
+export const beaconsProcessed = new client.Counter({
+  name: "qoe_beacons_processed_total",
+  help: "QoE beacons consumed by the worker",
   labelNames: ["type"],
   registers: [registry],
 });
+
+// Global gauge of live playback sessions. Every API replica reads the same
+// Redis sorted set and reports the same value, so query it with max(), not sum().
+export const concurrentStreams = new client.Gauge({
+  name: "concurrent_streams",
+  help: "Playback sessions with a heartbeat in the last 30s",
+  registers: [registry],
+});
+
+export function setConcurrentStreams(n: number): void {
+  concurrentStreams.set(n);
+}
 
 export function recordCache(cache: string, hit: boolean) {
   cacheEvents.labels(cache, hit ? "hit" : "miss").inc();

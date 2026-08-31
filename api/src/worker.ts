@@ -1,6 +1,6 @@
 import amqp from "amqplib";
 import { pool, waitForDb } from "./lib/db";
-import { eventsProcessed } from "./telemetry";
+import { beaconsProcessed } from "./telemetry";
 import { startMetricsServer } from "./lib/metricsServer";
 import { config } from "./config";
 
@@ -32,7 +32,7 @@ async function handle(channel: Ch, msg: amqp.ConsumeMessage) {
     if (config.workerEventMs > 0) {
       await new Promise((r) => setTimeout(r, config.workerEventMs));
     }
-    eventsProcessed.labels(type).inc();
+    beaconsProcessed.labels(type).inc();
     channel.ack(msg);
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -51,17 +51,17 @@ async function consumeForever() {
     try {
       const conn = await amqp.connect(config.rabbitUrl);
       const channel = await conn.createChannel();
-      await channel.assertQueue(config.engagementQueue, { durable: true });
+      await channel.assertQueue(config.qoeQueue, { durable: true });
       await channel.prefetch(config.workerPrefetch);
       // eslint-disable-next-line no-console
-      console.log(`[worker] consuming '${config.engagementQueue}'`);
+      console.log(`[worker] consuming '${config.qoeQueue}'`);
 
       await new Promise<void>((_resolve, reject) => {
         conn.on("error", () => {});
         conn.on("close", () => reject(new Error("connection closed")));
         channel.on("close", () => reject(new Error("channel closed")));
         channel
-          .consume(config.engagementQueue, (msg) => {
+          .consume(config.qoeQueue, (msg) => {
             if (msg) void handle(channel, msg);
           })
           .catch(reject);

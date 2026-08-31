@@ -40,7 +40,7 @@ async function oneRequest() {
     if (mode === "events") {
       const id = pickId();
       if (id) {
-        await fetch(`${config.apiBase}/events`, {
+        await fetch(`${config.apiBase}/qoe/beacon`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ titleId: id, type: roll < 0.3 ? "complete" : "play" }),
@@ -56,7 +56,7 @@ async function oneRequest() {
     } else {
       const id = pickId();
       if (id)
-        await fetch(`${config.apiBase}/events`, {
+        await fetch(`${config.apiBase}/qoe/beacon`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ titleId: id, type: "play" }),

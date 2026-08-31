@@ -36,7 +36,7 @@ export async function getChannel(): Promise<Ch> {
   ch.on("close", () => {
     channel = null;
   });
-  await ch.assertQueue(config.engagementQueue, { durable: true });
+  await ch.assertQueue(config.qoeQueue, { durable: true });
   channel = ch;
   return ch;
 }
