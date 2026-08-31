@@ -167,6 +167,80 @@ every tile has a one-line explanation of what it measures and where the
 number comes from, and the "what to watch" note updates with the preset or
 strategy you've picked so there's always a concrete thing to look for.
 
+## Read-path thundering herd
+
+The scaling story above is the **write path** — a beacon-write storm behind a
+queue. Angel's actual ask is **read-path scalability**, so this adds a
+second, independent tier: a synchronized surge of `POST /playback/start`
+requests (everyone pressing play the moment an episode drops), and an API
+(read) tier that scales itself, horizontally, behind a load balancer to hold
+video start time down under it.
+
+**Two tiers, two autoscalers, two signals — they never compete for the same
+knob:**
+
+| Tier | Scales on | Behind | Console preset that drives it |
+|---|---|---|---|
+| Write (worker pool) | Beacon backlog | (queue consumers) | Episode premiere (beacon storm) |
+| Read (API pool) | VST p95 (video start time) | nginx load balancer | Playback surge (thundering herd) |
+
+Hit **Playback surge** with the read-tier autoscaler on and watch: one API
+instance saturates under the herd, VST p95 spikes to **~1,900ms**; the read
+tier scales **1 → 4** instances behind the load balancer; VST recovers to
+**~45ms** (under the 100ms SLO) and holds there for the rest of the surge,
+then the tier scales back down to 1 once the herd subsides. Meanwhile the
+worker pool never moves — the beacon-write signal that drives it stays flat,
+because this preset is pure read traffic. Run **Episode premiere** instead
+and it's the mirror image: the worker pool scales on backlog while the API
+pool holds at its floor of 1. Same control-plane pattern (provision-on-demand
+containers, a control loop watching a live signal), two independent knobs.
+
+**Honesty framing**, extending the contract above:
+
+- **Real:** the API containers are real Docker containers, provisioned
+  on-demand the same way workers are; the load balancer is a real nginx
+  process round-robining across them via Docker's DNS, re-resolving per
+  request so a freshly-provisioned instance is picked up with no reload; VST
+  is measured `/playback/start` latency aggregated across whatever replicas
+  are live at the time.
+- **Simulated (labeled):** what makes one instance saturate under the herd is
+  a bounded per-instance concurrency cap plus a small async delay standing in
+  for a real entitlement/DRM check (`PLAYBACK_MAX_INFLIGHT`,
+  `PLAYBACK_COST_MS`) — the read-tier equivalent of the worker pool's labeled
+  cold-start, not a real infrastructure limit. It's async only (no CPU
+  busy-loop), so it doesn't distort the rest of the stack under load.
+- **VST is a trailing p95** over a 30-second window, not an instantaneous
+  reading — after the read tier scales out, VST takes several seconds to roll
+  the spike out of that window. The console and the AI explainer both call
+  this out rather than treating "still elevated a moment after scaling" as a
+  failure.
+
+**Phase 2 (ECS) mapping**, same as the worker tier above: the API tier's
+provision-on-demand loop becomes an ECS service's desired-count (or
+Application Auto Scaling target-tracking on a custom VST metric published to
+CloudWatch); the nginx load balancer becomes an ALB; the herd itself needs no
+mapping — a real premiere-night thundering herd of `/playback/start` calls is
+exactly this traffic shape, not a simulation of it.
+
+**Measured, live stack, not asserted:**
+
+- 1 API instance under the ~3,900 req/s playback-surge herd → VST p95 spikes
+  to **~1,900ms**.
+- Read tier scales **1 → 4** instances (`MAX_API=4`); VST recovers to
+  **~45ms** and holds under the 100ms SLO for the rest of the surge; scales
+  back to 1 once the herd ends.
+- The scale-up trigger is **VST p95 > 80ms** (`VST_SCALE_UP_MS`, env-tunable)
+  — set above the transient VST blips the Episode Premiere scenario can
+  cause (its viewer-session dispatch briefly inflates p95 even though the
+  read tier isn't actually saturated) and well under a genuine herd's VST, so
+  the two autoscalers don't false-trigger on each other's traffic.
+- Raising nginx's `worker_connections` (512 → 4096) fixed a ~30% error rate
+  under the herd down to ~0 — a 22,768-request burst logged zero errors
+  post-fix.
+- Confirmed independence: `playbackSurge` scales the API tier while the
+  worker pool holds at 1; `episodePremiere` scales the worker pool while the
+  API tier holds at 1.
+
 ## Observability
 
 Metrics are always on (Prometheus + Grafana). Distributed tracing is
