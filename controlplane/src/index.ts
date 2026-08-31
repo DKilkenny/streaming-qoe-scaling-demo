@@ -42,7 +42,7 @@ setInterval(async () => {
   if (n >= 0) activeWorkersGauge.set(n);
 }, 3_000);
 
-const PRESETS: Record<string, { rps: number; mode: "mixed" | "events" | "premiere" | "surge" }> = {
+const PRESETS: Record<string, { rps: number; mode: "mixed" | "events" | "premiere" | "surge" | "combined" }> = {
   eveningPeak: { rps: 800, mode: "mixed" },
   trailerDrop: { rps: 1500, mode: "mixed" },
   // Episode premiere: a synchronized surge of viewers opening sessions on one
@@ -58,6 +58,14 @@ const PRESETS: Record<string, { rps: number; mode: "mixed" | "events" | "premier
   // PLAYBACK_COST_MS=10ms), so 4000 rps overwhelms 1 instance (VST climbs
   // hard) and forces scale-out of the api pool to hold VST down.
   playbackSurge: { rps: 4000, mode: "surge" },
+  // Combined premiere: one load scales BOTH tiers at once — the same
+  // ~4000/s playback-start herd as playbackSurge (read tier: 1 -> 4 api
+  // instances on VST), plus a beacon stream fixed at ~2000/s regardless of
+  // rps (write tier: 1 -> 5 workers on backlog) — see load.ts
+  // COMBINED_BEACON_SPAWNS_PER_TICK for why that rate is decoupled from
+  // rps rather than derived from it. Two independent autoscalers, one
+  // premiere event.
+  premiereFull: { rps: 4000, mode: "combined" },
 };
 
 async function main() {

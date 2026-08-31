@@ -1,6 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { config } from "./config";
 
-type Mode = "mixed" | "events" | "premiere" | "surge";
+type Mode = "mixed" | "events" | "premiere" | "surge" | "combined";
 
 let targetRps = 0;
 let mode: Mode = "mixed";
@@ -89,12 +90,73 @@ async function playbackStartOnly(titleId: string) {
   }
 }
 
+// Combined-premiere: a QoE-only session used by mode "combined" to build the
+// worker tier's beacon backlog *independently* of the playback-start rate
+// driving the read tier above it. Deliberately skips /playback/start (that
+// read traffic is already generated, at a much higher and separately-tuned
+// rate, by playbackStartOnly below) — /qoe/beacon doesn't require a real
+// session id, so a locally-generated one is enough to drive the same
+// live-session bookkeeping (touchSession/endSession) a real viewer would.
+// Same beacon shape/timing as viewerSession, so the worker tier sees the
+// same mix (play/progress/rebuffer/complete/error) it does in episodePremiere.
+async function beaconOnlySession(titleId: string) {
+  const sessionId = randomUUID();
+  const beacon = (type: string) =>
+    fetch(`${config.apiBase}/qoe/beacon`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, titleId, type }),
+    }).catch(() => { errors++; });
+
+  void beacon("play");
+  if (Math.random() < 0.08) {
+    setTimeout(() => void beacon("rebuffer"), 2_000 + Math.random() * 4_000);
+  }
+  setTimeout(() => void beacon("progress"), 5_000 + Math.random() * 7_000);
+  if (Math.random() < 0.02) {
+    setTimeout(() => void beacon("error"), 6_000 + Math.random() * 6_000);
+  } else {
+    setTimeout(() => void beacon("complete"), 14_000 + Math.random() * 16_000);
+  }
+  sent++;
+}
+
+// Fixed beacon-session spawn rate for mode "combined", deliberately NOT
+// derived from targetRps — this is what keeps the write/worker tier's
+// beacon rate DECOUPLED from the read tier's playback-start rate. Each
+// spawned session emits ~3.08 beacons on average over its lifetime (play +
+// progress + always one of complete/error + an 8% chance of rebuffer), and
+// by Little's law the steady-state beacon *emission* rate is
+// spawn-rate * beacons-per-session, independent of how those beacons are
+// spread out in time by their setTimeout scheduling. At
+// COMBINED_BEACON_SPAWNS_PER_TICK=65, fired once per 100ms dispatch tick
+// (10 ticks/s, see the dispatch loop below) regardless of what rps the
+// combined preset is set to, that's 650 spawns/s -> ~650*3.08 ≈ 2000
+// beacons/s: enough to build a visible backlog at 1 worker (~550/s) but
+// well within the 5-worker pool's drain capacity (~2750/s), so it builds
+// then drains instead of running away. If the start rate ever changes,
+// this number does NOT need to change with it — that decoupling is the
+// point (see combined-report.md for why coupling it to rps was the
+// failure mode: e.g. beacons-per-start scaling would run the backlog away
+// at high start rates).
+const COMBINED_BEACON_SPAWNS_PER_TICK = 65;
+
 async function oneRequest() {
   if (inflight >= MAX_INFLIGHT) return;
   inflight++;
   try {
     const roll = Math.random();
     if (mode === "surge") {
+      const id = titleIds[0] ?? pickId();
+      if (id) await playbackStartOnly(id);
+      return;
+    }
+    if (mode === "combined") {
+      // Read-tier half of the combined scenario: the same fire-and-forget
+      // playback-start herd as "surge", driven at the preset's rps. The
+      // write-tier half (beaconOnlySession) is spawned separately, at a
+      // fixed rate, by the dispatch loop below — not from here — so it
+      // never scales with rps.
       const id = titleIds[0] ?? pickId();
       if (id) await playbackStartOnly(id);
       return;
@@ -141,6 +203,12 @@ setInterval(() => {
   if (!running || targetRps <= 0) return;
   const n = Math.round((targetRps * TICK_MS) / 1000);
   for (let i = 0; i < n; i++) void oneRequest();
+  // Combined-premiere's write/worker-tier half: a fixed spawn rate, NOT
+  // derived from `n`/targetRps above — see COMBINED_BEACON_SPAWNS_PER_TICK.
+  if (mode === "combined") {
+    const id = titleIds[0] ?? pickId();
+    if (id) for (let i = 0; i < COMBINED_BEACON_SPAWNS_PER_TICK; i++) void beaconOnlySession(id);
+  }
 }, TICK_MS);
 
 // Keep the working set of title IDs fresh.

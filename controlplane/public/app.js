@@ -191,6 +191,7 @@ const PRESET_NOTES = {
   trailerDrop: "Simulating a trailer-drop spike: a burst of catalog and search traffic. Watch: read-path load (discover/search) rises while playback stays a smaller share of it.",
   episodePremiere: "Simulating a synchronized viewer surge (an episode drop): everyone opens the same title at once. Watch: reads stay fast (VST) while the beacon backlog builds and the autoscaler provisions workers.",
   playbackSurge: "Everyone presses play at once when the episode drops — a read-path thundering herd. Watch VST spike as one API instance saturates, then recover as the read tier scales out. (VST is a trailing p95, so recovery shows a few seconds after the instances come up.)",
+  premiereFull: "A full premiere: everyone hits play (read tier scales API servers on VST) AND every player floods QoE telemetry (write/worker tier scales to drain the beacon backlog) — at the same time, from one event. Watch both api instances and workers climb, independently.",
   stop: "Traffic stopped. Watch: the backlog drains, and once the surge has cleared, the autoscaler sheds workers back toward the floor.",
 };
 const STRATEGY_NOTES = {
@@ -428,17 +429,19 @@ async function runTourA() {
   if (myGen !== tourGeneration) return;
   await post("/api/apiscaler", { enabled: true });
   if (myGen !== tourGeneration) return;
+  await post("/api/autoscaler", { enabled: true });
+  if (myGen !== tourGeneration) return;
   await post("/api/strategy", { strategy: "proactive" });
   if (myGen !== tourGeneration) return;
   logNarration("It&rsquo;s Tuesday night &mdash; a new episode just dropped. Everyone hits play at once.");
 
   await sleep(2500);
   if (myGen !== tourGeneration) return;
-  await post("/api/preset", { name: "playbackSurge" });
+  await post("/api/preset", { name: "premiereFull" });
 
   await sleep(5000);
   if (myGen !== tourGeneration) return;
-  logNarration("One server is overwhelmed &mdash; playback-start time (VST) is climbing.");
+  logNarration("Everyone hits play &mdash; the read tier scales API servers to keep playback fast (VST).");
 
   await waitForCondition((s) => s && s.apiInstances > 1, 15000, myGen);
   if (myGen !== tourGeneration) return;
@@ -448,12 +451,21 @@ async function runTourA() {
   await waitForCondition((s) => s && s.metrics && s.metrics.vstP95_ms != null && s.metrics.vstP95_ms < 100, 45000, myGen, 1500);
   if (myGen !== tourGeneration) return;
   const vst = latestStatus && latestStatus.metrics && latestStatus.metrics.vstP95_ms != null ? latestStatus.metrics.vstP95_ms : "<100";
-  logNarration(`Recovered &mdash; playback starts are fast again (VST ~${vst}ms) under a ~4,000/sec rush. And the analytics pipeline (workers) never even flinched &mdash; the two paths are decoupled.`);
+  logNarration(`Recovered &mdash; playback starts are fast again (VST ~${vst}ms). &hellip;and every player floods QoE telemetry &mdash; the write/worker tier scales to drain the beacon backlog.`);
+
+  await waitForCondition((s) => s && s.workers > 1, 15000, myGen);
+  if (myGen !== tourGeneration) return;
+  const workerN = latestStatus && latestStatus.workers != null ? latestStatus.workers : 5;
+  logNarration(`The worker pool is provisioning too &mdash; 1 &rarr; ${workerN} to drain the backlog. Two independent systems, one premiere &mdash; neither fighting the other.`);
+
+  await waitForCondition((s) => s && s.metrics && s.metrics.backlog != null && s.metrics.backlog < 500, 30000, myGen, 1500);
+  if (myGen !== tourGeneration) return;
+  logNarration("Backlog drained. Both tiers held their SLOs through the whole rush.");
 
   await sleep(4500);
   if (myGen !== tourGeneration) return;
   await post("/api/preset", { name: "stop" });
-  logNarration("The rush passes; the read tier scales back down as demand falls.");
+  logNarration("The rush passes; both tiers scale back down as demand falls.");
 
   await sleep(6000);
   if (myGen !== tourGeneration) return;
