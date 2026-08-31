@@ -76,8 +76,9 @@ no `/etc/hosts` edits needed. Certs live in `caddy/certs/` and are gitignored.
 ## What to look for under load
 
 - **Video start time (VST) p95 stays under 100ms** — the headline SLO. Under an
-  Episode Premiere surge (700 target rps, ~15,000 concurrent streams) it holds
-  in the 10–25ms range the whole time; measured, not simulated.
+  Episode Premiere surge (~700 new viewer sessions/s, ~15,000 concurrent
+  streams) it holds in the 10–25ms range the whole time; measured, not
+  simulated.
 - **Concurrent streams** climbs from 0 toward ~15,000 as the premiere ramps and
   holds there for the duration of the surge (tracked from real session state,
   queried with `max()` since every API replica reports the same global value).
