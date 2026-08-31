@@ -8,23 +8,23 @@ import { recentEvents } from "./state";
 function ruleBasedExplain(s: Snapshot, workers: number): string {
   const parts: string[] = [];
   const w = workers >= 0 ? `${workers} worker(s) active; ` : "";
+
+  if (s.vstP95_ms != null && s.vstP95_ms > 100)
+    parts.push(`Video Start Time is over SLO (p95 ${s.vstP95_ms}ms vs 100ms target) — the playback-start path needs cache warming or more read capacity.`);
+  else if (s.vstP95_ms != null)
+    parts.push(`Playback starts are fast (VST p95 ${s.vstP95_ms}ms, well under the 100ms SLO), served cache-first and independent of the telemetry pipeline.`);
+
   if (s.backlog != null && s.backlog > 2000)
-    parts.push(
-      `The engagement queue is backed up (${s.backlog.toLocaleString()} messages) — the workers are behind the incoming event rate. ${w}adding worker capacity will drain it.`
-    );
+    parts.push(`The QoE beacon pipeline is behind (${s.backlog.toLocaleString()} backlog) — ${w}the autoscaler is adding workers to drain it.`);
   else if (s.backlog != null && s.backlog > 500)
-    parts.push(`A backlog is forming (${s.backlog} messages); ${w}the workers are roughly keeping pace.`);
-  else parts.push(`The event pipeline is healthy — the queue is essentially empty and ${workers >= 0 ? `${workers} worker(s) are` : "the workers are"} keeping up.`);
+    parts.push(`A small beacon backlog is forming (${s.backlog}); ${w}the workers are roughly keeping pace.`);
+  else
+    parts.push(`The QoE beacon pipeline is healthy — the backlog is essentially empty and ${workers >= 0 ? `${workers} worker(s) are` : "the workers are"} keeping up.`);
 
-  if (s.p99_ms != null && s.p99_ms > 150)
-    parts.push(`Read latency is elevated (p99 ${s.p99_ms}ms); warming the cache or scaling the read path would help.`);
-  else if (s.p99_ms != null)
-    parts.push(`Reads are fast (p99 ${s.p99_ms}ms), served from cache independently of the event pipeline.`);
-
-  if (s.cacheHitRate != null && s.cacheHitRate < 80)
-    parts.push(`Cache hit rate is low (${s.cacheHitRate}%) — the cache is still warming or churning.`);
-  else if (s.cacheHitRate != null)
-    parts.push(`Cache is warm (${s.cacheHitRate}% hit rate), shielding Postgres from read load.`);
+  if (s.concurrentStreams != null)
+    parts.push(`${s.concurrentStreams.toLocaleString()} concurrent streams right now.`);
+  if (s.rebufferRatio != null && s.rebufferRatio > 2)
+    parts.push(`Rebuffer ratio is ${s.rebufferRatio}% — worth watching for viewer-experience impact.`);
 
   return parts.join(" ");
 }
@@ -48,7 +48,7 @@ async function llmExplain(prompt: string): Promise<string | null> {
           {
             role: "system",
             content:
-              "You are an SRE watching a streaming discovery API. Explain in 2-4 plain-English sentences what the metrics show right now and what action, if any, would help. Ground every claim in the numbers provided; do not invent problems. Two separate concerns: (1) READ latency (p50/p99) is the API's read path, kept fast by caching — it is unrelated to event processing. (2) The QUEUE BACKLOG is the event write path. Only say the system is 'struggling' or 'behind' if the backlog is large (say > 2000) or clearly growing. If the backlog is low and latency is low, state plainly that the system is healthy. Be concrete and calm. No preamble, no bullet points.",
+              "You are an SRE watching a video streaming service. Explain in 2-4 plain-English sentences what the metrics show right now and what action, if any, would help. Ground every claim in the numbers; do not invent problems. Two separate concerns: (1) VIDEO START TIME (VST p95) is the playback-start path, kept fast by caching — its SLO is p95 < 100ms; only call it a problem if it exceeds 100ms. (2) The BEACON BACKLOG is the QoE telemetry write path; only say the pipeline is 'behind' if the backlog is large (say > 2000) or clearly growing, and note the autoscaler adds workers to drain it. Rebuffer ratio and playback error rate are viewer-experience signals aggregated from client beacons. If VST is under SLO and the backlog is low, state plainly that the service is healthy. Be concrete and calm. No preamble, no bullet points.",
           },
           { role: "user", content: prompt },
         ],
@@ -85,12 +85,13 @@ export async function explainIncident(): Promise<{
 
   const prompt =
     `Live metrics:\n` +
-    `  p50 latency: ${snap.p50_ms}ms\n` +
-    `  p99 latency: ${snap.p99_ms}ms\n` +
+    `  VST p95: ${snap.vstP95_ms}ms (SLO < 100ms)\n` +
+    `  concurrent streams: ${snap.concurrentStreams}\n` +
+    `  rebuffer ratio: ${snap.rebufferRatio}%\n` +
+    `  playback error rate: ${snap.playbackErrorRate}%\n` +
     `  cache hit rate: ${snap.cacheHitRate}%\n` +
-    `  request rate: ${snap.rps}/s\n` +
-    `  queue backlog: ${snap.backlog}\n` +
-    `  events published/s: ${snap.eventsPublished}, processed/s: ${snap.eventsProcessed}\n` +
+    `  beacon backlog: ${snap.backlog}\n` +
+    `  beacons published/s: ${snap.eventsPublished}, processed/s: ${snap.eventsProcessed}\n` +
     `  active workers: ${workers < 0 ? "unknown" : workers}\n\n` +
     `Recent events:\n${events || "(none)"}`;
 
