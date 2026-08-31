@@ -1,6 +1,6 @@
 import { config } from "./config";
 
-export async function q(expr: string): Promise<number | null> {
+async function q(expr: string): Promise<number | null> {
   try {
     const url = `${config.prometheusBase}/api/v1/query?query=${encodeURIComponent(expr)}`;
     const res = await fetch(url);

@@ -371,7 +371,21 @@ async function reloadLbNginx(): Promise<void> {
       AttachStdout: true,
       AttachStderr: true,
     });
-    await exec.start({});
+    const stream = await exec.start({});
+    // exec.start() resolves once the stream is attached, not once the
+    // process exits — inspect() immediately after would race and see
+    // ExitCode: null. Drain the stream to EOF first so inspect() reflects
+    // the finished exec.
+    await new Promise<void>((resolve) => {
+      stream.on("end", resolve);
+      stream.on("error", resolve);
+      stream.resume();
+    });
+    const info = await exec.inspect();
+    if (info.ExitCode !== 0) {
+      // eslint-disable-next-line no-console
+      console.warn("[docker] nginx reload exited non-zero:", info.ExitCode);
+    }
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[docker] lb nginx reload failed:", (err as Error).message);

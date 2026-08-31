@@ -60,9 +60,9 @@ load / viewers ─► [ lb: nginx ] ─► api replica 1 ─┐
    instances get the same env/image (`streaming-app`, `ROLE=api`).
 3. **API-tier autoscaler (separate from the worker autoscaler):** scales the API
    pool on a **read-path signal** — scale up when VST p95 exceeds a threshold
-   (default 40ms, giving headroom under the 100ms SLO) or read RPS approaches
-   current API capacity; scale down with hysteresis once the herd subsides.
-   `MIN_API=1`, `MAX_API=4`.
+   (default 40ms, giving headroom under the 100ms SLO; final tuned value: 80ms —
+   see README) or read RPS approaches current API capacity; scale down with
+   hysteresis once the herd subsides. `MIN_API=1`, `MAX_API=4`.
 4. **Per-instance saturation model** on `/playback/start`: `PLAYBACK_COST_MS`
    (async delay, ~10ms, simulated entitlement lookup) + `PLAYBACK_MAX_INFLIGHT`
    (per-instance concurrency cap, ~20). Beyond the cap, requests queue → VST
@@ -97,8 +97,9 @@ No unit-test harness; verify by running:
    confirm nginx distributes across ALL of them (each replica serves traffic) and
    VST aggregates across replicas; the existing premiere STILL works.
 2. **Herd stresses one instance:** with 1 API instance, the `playbackSurge` herd
-   pushes VST up materially (past the 40ms scale threshold, ideally toward/over
-   100ms) — proving the read path is genuinely stressed.
+   pushes VST up materially (past the 40ms scale threshold — final tuned value:
+   80ms, see README — ideally toward/over 100ms) — proving the read path is
+   genuinely stressed.
 3. **API tier scales to hold VST:** with the api-autoscaler on, the same herd
    scales the API tier 1→N and VST recovers under continued load; scales back down
    after. Capture the VST-before vs VST-after-scale numbers.
