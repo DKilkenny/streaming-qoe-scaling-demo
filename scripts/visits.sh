@@ -51,11 +51,20 @@ for line in sys.stdin:
 PY
 }
 
+# Resolve the caddy container id directly. `docker compose logs` returns nothing
+# on some Compose versions, so read from `docker logs` on the resolved container.
+cid="$(docker compose ps -q caddy 2>/dev/null)"
+[ -z "$cid" ] && cid="$(docker ps -qf 'name=caddy' | head -1)"
+if [ -z "$cid" ]; then
+  echo "caddy container not found (is the stack up?)"
+  exit 1
+fi
+
 if [ "$mode" = "follow" ]; then
   echo "Watching for real visits (Ctrl-C to stop)..."
-  docker compose logs -f --no-color caddy 2>/dev/null | reader visits
+  docker logs -f "$cid" 2>&1 | reader visits
 else
-  out="$(docker compose logs --no-color caddy 2>/dev/null | reader "$mode")"
+  out="$(docker logs "$cid" 2>&1 | reader "$mode")"
   if [ -z "$out" ]; then
     echo "(no matching requests yet)"
   else
