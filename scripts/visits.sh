@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Who has visited the live demo, and when. Reads Caddy's access log (the public
-# front door) from `docker compose logs caddy` and prints readable lines.
+# front door) and prints readable lines. See scripts/visits.py for the parser.
 #
 # Because the demo is behind HTTP basic auth, a 200 is a real invited visitor;
 # random bots/scanners that hit the URL without the password get a 401. The
@@ -14,45 +14,11 @@
 #
 # Columns: timestamp  client-IP  status  host+path  user-agent
 
-cd "$(dirname "$0")/.." || exit 1
+here="$(cd "$(dirname "$0")" && pwd)"
 mode="${1:-visits}"
 
-reader() {
-  python3 - "$1" <<'PY'
-import sys, json, datetime
-mode = sys.argv[1] if len(sys.argv) > 1 else "visits"
-for line in sys.stdin:
-    i = line.find("{")
-    if i < 0:
-        continue
-    try:
-        d = json.loads(line[i:])
-    except Exception:
-        continue
-    if d.get("msg") != "handled request":
-        continue
-    req = d.get("request", {})
-    ip = req.get("client_ip") or req.get("remote_ip") or req.get("remote_addr") or "?"
-    ip = ip.split(":")[0] if ip.count(":") == 1 else ip  # strip :port if present
-    uri = req.get("uri", "?")
-    host = req.get("host", "")
-    status = d.get("status", "?")
-    ua = req.get("headers", {}).get("User-Agent", ["?"])
-    ua = ua[0] if isinstance(ua, list) and ua else (ua if isinstance(ua, str) else "?")
-    ts = datetime.datetime.fromtimestamp(d.get("ts", 0)).strftime("%Y-%m-%d %H:%M:%S")
-    if mode != "all":
-        # real visitor page opens only: authenticated (200) GET of an app root,
-        # skipping the /api/* status polls, static assets, and 401 bots.
-        if status != 200:
-            continue
-        if uri not in ("/", "/index.html", "/console", "/console/"):
-            continue
-    print(f"{ts}  {ip:15s}  {status}  {host}{uri}  {ua[:70]}")
-PY
-}
-
-# Resolve the caddy container id directly. `docker compose logs` returns nothing
-# on some Compose versions, so read from `docker logs` on the resolved container.
+# Resolve the caddy container directly. `docker compose logs` returns nothing on
+# some Compose versions, so read from `docker logs` on the resolved container.
 cid="$(docker compose ps -q caddy 2>/dev/null)"
 [ -z "$cid" ] && cid="$(docker ps -qf 'name=caddy' | head -1)"
 if [ -z "$cid" ]; then
@@ -62,9 +28,9 @@ fi
 
 if [ "$mode" = "follow" ]; then
   echo "Watching for real visits (Ctrl-C to stop)..."
-  docker logs -f "$cid" 2>&1 | reader visits
+  docker logs -f "$cid" 2>&1 | python3 -u "$here/visits.py" visits
 else
-  out="$(docker logs "$cid" 2>&1 | reader "$mode")"
+  out="$(docker logs "$cid" 2>&1 | python3 "$here/visits.py" "$mode")"
   if [ -z "$out" ]; then
     echo "(no matching requests yet)"
   else
