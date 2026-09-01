@@ -8,8 +8,20 @@ Usage: <caddy logs> | visits.py [visits|all]
 import sys
 import json
 import datetime
+import ipaddress
 
 mode = sys.argv[1] if len(sys.argv) > 1 else "visits"
+
+
+def is_external(ip):
+    """True for a real public internet client; False for private/internal IPs
+    (Docker network, loopback, link-local) that are your own tests or health
+    checks, not visitors. Unknown/unparseable IPs are treated as external so a
+    real one is never hidden."""
+    try:
+        return ipaddress.ip_address(ip).is_global
+    except Exception:
+        return True
 
 for line in sys.stdin:
     i = line.find("{")
@@ -30,8 +42,11 @@ for line in sys.stdin:
     ua = ua[0] if isinstance(ua, list) and ua else (ua if isinstance(ua, str) else "?")
     ts = datetime.datetime.fromtimestamp(d.get("ts", 0)).strftime("%Y-%m-%d %H:%M:%S")
     if mode != "all":
-        # real visitor page opens: authenticated (200) GET of an app root,
-        # skipping /api/* status polls, static assets, and 401 bots.
+        # real visitor page opens: an external client, authenticated (200) GET
+        # of an app root, skipping /api/* status polls, static assets, 401 bots,
+        # and internal/private IPs (your own tests, Docker health checks).
+        if not is_external(ip):
+            continue
         if status != 200:
             continue
         if uri not in ("/", "/index.html", "/console", "/console/"):
