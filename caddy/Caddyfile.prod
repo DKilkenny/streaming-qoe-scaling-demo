@@ -22,4 +22,12 @@
 	# tiles, and /api/* all live here. The load generator, LB, and scaling run
 	# server-side, so nothing else needs to be exposed.
 	reverse_proxy controlplane:8080
+
+	# Access log to stdout (captured by docker logs) so visits are visible.
+	# Basic auth means a 200 is a real invited visitor; bots without the
+	# password get a 401. Read it with scripts/visits.sh.
+	log {
+		output stdout
+		format json
+	}
 }

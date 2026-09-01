@@ -177,6 +177,21 @@ instrumentation in the code, just not running the collector here:
 The Console's **Traces ↗** link disappears (no dead link), and no spans are
 generated. Local dev is unaffected — Jaeger still runs there by default.
 
+## 6d. Knowing when someone visits
+Both prod Caddyfiles log every request to stdout (captured by `docker compose logs
+caddy`). Because the site is behind basic auth, a `200` is a real invited visitor
+and bots without the password get a `401`, so real visits are easy to pick out.
+
+```bash
+./scripts/visits.sh          # real visits only (authenticated page opens): time, IP, user-agent
+./scripts/visits.sh all      # every logged request, including 401 bots and asset/poll noise
+./scripts/visits.sh follow   # live tail of real visits as they land
+```
+
+Your own testing will show up as your IP; a visit from a different IP is someone
+you shared the link with. DigitalOcean itself only exposes coarse bandwidth graphs,
+not per-visit detail, which is why this reads the Caddy log instead.
+
 ## 7. Tear down when done
 ```bash
 make down        # stop containers, keep data

@@ -20,6 +20,14 @@
 
 	# The Console (control plane): guided tours, tiles, and /api/*.
 	reverse_proxy controlplane:8080
+
+	# Access log to stdout (captured by docker logs). Basic auth means a 200 is
+	# a real invited visitor; bots without the password get a 401. Read it with
+	# scripts/visits.sh.
+	log {
+		output stdout
+		format json
+	}
 }
 
 {$GRAFANA_SITE_ADDRESS} {
@@ -32,4 +40,9 @@
 	}
 
 	reverse_proxy grafana:3000
+
+	log {
+		output stdout
+		format json
+	}
 }
